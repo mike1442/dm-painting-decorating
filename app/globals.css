@@ -7,3 +7,7 @@
 .brand img{width:245px;height:120px;object-fit:contain}
 @media(max-width:850px){.header{height:112px;padding-top:4px;padding-bottom:4px}.brand img{width:190px;height:104px}.nav{top:112px}}
 @media(max-width:390px){.brand img{width:174px;height:100px}}
+
+/* Contact section now uses one column after removal of redundant brand card */
+.contact{grid-template-columns:minmax(0,1fr);min-height:auto}
+.contact>div:first-child{max-width:780px}
