@@ -11,3 +11,7 @@
 /* Contact section now uses one column after removal of redundant brand card */
 .contact{grid-template-columns:minmax(0,1fr);min-height:auto}
 .contact>div:first-child{max-width:780px}
+
+/* Unnumbered service rows */
+.service{grid-template-columns:1fr 1fr 30px}
+@media(max-width:850px){.service{grid-template-columns:1fr 20px}.service p{grid-column:1;grid-row:2}.service-arrow{grid-column:2;grid-row:1}}
