@@ -27,25 +27,35 @@ jobs:
         with:
           node-version: "24"
       - name: Install dependencies
+        id: dependencies
         run: |
           if [ -f package-lock.json ]; then
             npm ci --no-fund
           else
             npm install --no-fund
           fi
-      - name: Audit production dependencies
-        run: npm audit --omit=dev --audit-level=high
       - name: Lint admin source
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run lint
       - name: Unit tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm test
       - name: Typecheck
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run typecheck
       - name: Production build
+        id: build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
         run: npm run build
+      - name: Audit production dependencies
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: npm audit --omit=dev --audit-level=high
       - name: Install browser
+        id: browser
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: npx playwright install --with-deps chromium
       - name: Desktop and mobile anonymous boundaries
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.browser.outcome == 'success' }}
         run: npm run test:e2e
       - name: Upload browser report and resolved dependency lock
         if: always()
