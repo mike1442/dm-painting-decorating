@@ -1,0 +1,27 @@
+"use client";
+import {useRef,useState,useEffect} from "react";
+type Shade={name:string;brand:string;hex:string};
+const shades:Shade[]=[
+{name:"Warm White",brand:"D&M inspiration",hex:"#e9e3d6"},
+{name:"Soft Sage",brand:"D&M inspiration",hex:"#9eae9a"},
+{name:"Stone",brand:"D&M inspiration",hex:"#c5b9a6"},
+{name:"Deep Navy",brand:"D&M inspiration",hex:"#33465b"},
+{name:"Dusty Blue",brand:"D&M inspiration",hex:"#91a9b9"},
+{name:"Blush",brand:"D&M inspiration",hex:"#c8a8a4"},
+{name:"Olive",brand:"D&M inspiration",hex:"#838b70"},
+{name:"Charcoal",brand:"D&M inspiration",hex:"#565d60"}
+];
+export default function RoomDesigner(){
+const [photo,setPhoto]=useState<string>(""),[shade,setShade]=useState(shades[1]),[strength,setStrength]=useState(65),[showOriginal,setShowOriginal]=useState(false),[brush,setBrush]=useState(38),[mode,setMode]=useState<"paint"|"erase">("paint");const image=useRef<HTMLImageElement>(null),canvas=useRef<HTMLCanvasElement>(null),mask=useRef<HTMLCanvasElement|null>(null),dragging=useRef(false);
+useEffect(()=>()=>{if(photo)URL.revokeObjectURL(photo)},[photo]);
+function redraw(){const img=image.current,c=canvas.current,m=mask.current;if(!img||!c||!m)return;const ctx=c.getContext("2d");if(!ctx)return;ctx.clearRect(0,0,c.width,c.height);ctx.drawImage(img,0,0,c.width,c.height);if(showOriginal)return;const overlay=document.createElement("canvas");overlay.width=c.width;overlay.height=c.height;const o=overlay.getContext("2d");if(!o)return;o.fillStyle=shade.hex;o.fillRect(0,0,c.width,c.height);o.globalCompositeOperation="destination-in";o.drawImage(m,0,0);ctx.globalAlpha=strength/100;ctx.globalCompositeOperation="multiply";ctx.drawImage(overlay,0,0);ctx.globalAlpha=1;ctx.globalCompositeOperation="source-over";}
+useEffect(redraw,[shade,strength,showOriginal,photo]);
+function onLoad(){const img=image.current,c=canvas.current;if(!img||!c)return;const scale=Math.min(1,1400/img.naturalWidth);c.width=Math.round(img.naturalWidth*scale);c.height=Math.round(img.naturalHeight*scale);const m=document.createElement("canvas");m.width=c.width;m.height=c.height;mask.current=m;redraw();}
+function stroke(e:React.PointerEvent<HTMLCanvasElement>){if(!dragging.current||!canvas.current||!mask.current)return;const c=canvas.current,rect=c.getBoundingClientRect(),x=(e.clientX-rect.left)*c.width/rect.width,y=(e.clientY-rect.top)*c.height/rect.height;const ctx=mask.current.getContext("2d");if(!ctx)return;ctx.globalCompositeOperation=mode==="erase"?"destination-out":"source-over";ctx.fillStyle="#fff";ctx.beginPath();ctx.arc(x,y,brush*c.width/700,0,Math.PI*2);ctx.fill();redraw();}
+function download(){if(!canvas.current)return;const a=document.createElement("a");a.download="dm-room-colour-preview.png";a.href=canvas.current.toDataURL("image/png");a.click();}
+return <div className="dm-designer">
+<div className="dm-designer-toolbar"><label className="dm-designer-upload">Upload room photo<input type="file" accept="image/*" onChange={e=>{const file=e.target.files?.[0];if(!file)return;if(file.size>15*1024*1024){alert("Please choose a photo under 15 MB.");return;}setPhoto(URL.createObjectURL(file));}}/></label><span>Photos stay on your device — nothing is uploaded to our server.</span></div>
+{photo?<><img ref={image} src={photo} alt="" onLoad={onLoad} style={{display:"none"}}/><div className="dm-designer-stage"><canvas ref={canvas} onPointerDown={e=>{dragging.current=true;e.currentTarget.setPointerCapture(e.pointerId);stroke(e)}} onPointerMove={stroke} onPointerUp={()=>dragging.current=false} onPointerCancel={()=>dragging.current=false} aria-label="Room photo. Brush over the walls to preview paint colours."/></div><div className="dm-designer-toolbar"><button className={mode==="paint"?"active":""} onClick={()=>setMode("paint")}>Paint walls</button><button className={mode==="erase"?"active":""} onClick={()=>setMode("erase")}>Erase edges</button><label>Brush size <input type="range" min="8" max="100" value={brush} onChange={e=>setBrush(+e.target.value)}/></label><button onClick={()=>{mask.current?.getContext("2d")?.clearRect(0,0,mask.current.width,mask.current.height);redraw()}}>Clear selection</button></div></>:<div className="dm-designer-empty"><strong>Your room, your colours.</strong><p>Upload a room photo, then brush over the walls you want to recolour. Furniture, ceilings and floors can stay as they are.</p></div>}
+<h2>Choose a colour</h2><p>These are illustrative D&M colours, not official Dulux or Crown shades. Manufacturer colour catalogues will be added once verified colour data is available.</p><div className="dm-designer-swatches">{shades.map(s=><button key={s.name} className={shade.name===s.name?"selected":""} onClick={()=>setShade(s)} aria-pressed={shade.name===s.name}><span style={{background:s.hex}}/>{s.name}</button>)}</div>
+{photo&&<><div className="dm-designer-toolbar"><label>Colour strength <input type="range" min="15" max="100" value={strength} onChange={e=>setStrength(+e.target.value)}/></label><button onPointerDown={()=>setShowOriginal(true)} onPointerUp={()=>setShowOriginal(false)} onPointerLeave={()=>setShowOriginal(false)} onClick={()=>setShowOriginal(v=>!v)}>Compare original</button><button onClick={download}>Save preview</button></div><p>Preview is approximate: lighting, screens and existing wall colours affect the result. Always check a real paint sample before deciding.</p><a className="dm-designer-quote" href={`/contact?colour=${encodeURIComponent(shade.name)}`}>Love this colour? Ask D&M for a quote →</a></>}
+</div>}
