@@ -76,8 +76,9 @@ export function SettingsPanel() {
           <TextField label="Invoice prefix" value={s.invoicePrefix} onChange={invoicePrefix => set({ invoicePrefix })} />
           <NumberField label="Next invoice number" value={s.nextInvoiceNumber} onChange={n => set({ nextInvoiceNumber: whole(n, 1, 999999) })} hint={`Next: ${formatDocNumber(s.invoicePrefix, s.nextInvoiceNumber)}`} />
         </div>
-        <p className="adm-muted adm-small">Continue from your existing paperwork. Numbers only count up on this device.</p>
+        <p className="adm-muted adm-small">Continue from your existing paperwork. Numbers are allocated securely when records are saved.</p>
       </Card>
     </div>
   );
 }
+

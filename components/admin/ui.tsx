@@ -54,10 +54,11 @@ export function StateChip({ state }: { state: QuoteState | InvoiceState }) {
 }
 
 const saveLabels: Record<Persistence, string> = {
-  saved: "Saved on this device",
+  saved: "Saved to cloud",
   saving: "Saving…",
   failed: "Not saved",
   unavailable: "Not saving",
+  conflict: "Resolve save conflict",
 };
 
 export function SaveStatus({ persistence }: { persistence: Persistence }) {
@@ -91,13 +92,12 @@ export function Empty({ icon, title, children }: { icon: IconName; title: string
   );
 }
 
-/** Shown when a link points at a record that is not stored in this browser. */
+/** Shown when the signed-in admin cannot find a record in cloud storage. */
 export function NotOnDevice({ kind, href }: { kind: string; href: string }) {
   return (
-    <Empty icon="device" title={`This ${kind} isn't on this device`}>
+    <Empty icon="search" title={`This ${kind} could not be found`}>
       <p>
-        Records are only stored in the browser where they were created. If it was made on another phone or computer,
-        export a backup there and import it here.
+        It may have been deleted. If this record was created in the original browser admin, review the import in business settings.
       </p>
       <Link className="adm-btn" href={href}>
         Back to {kind}s
@@ -150,15 +150,14 @@ export function Sheet({ open, onClose, title, children, actions }: {
   );
 }
 
-/** Reserved space for permanent customer links, which need a secure backend first. */
+/** Kept for compatibility with older editor screens. */
 export function CustomerLinkNotice({ kind }: { kind: "quotation" | "invoice" }) {
   return (
-    <Card title="Customer link" tone="quiet" aside={<span className="adm-chip adm-chip-muted">Not available yet</span>}>
+    <Card title="Customer link" tone="quiet">
       <p className="adm-muted">
-        Permanent links for customers need secure online storage, which isn&apos;t connected yet. This {kind} only exists
-        on this device, so there is no link a customer could open. To send it, use <strong>Preview</strong> then{" "}
-        <strong>Print / Save as PDF</strong>.
+        Save this {kind} before creating a secure customer link. You can also use <strong>Preview</strong> then <strong>Print / Save as PDF</strong>.
       </p>
     </Card>
   );
 }
+

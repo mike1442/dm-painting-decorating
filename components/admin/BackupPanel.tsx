@@ -2,35 +2,42 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { Card, Sheet } from "./ui";
-import { backupFileName, createBackup, mergeData, parseBackup } from "@/lib/admin/backup";
+import { backupFileName, createBackup, parseBackup } from "@/lib/admin/backup";
 import type { ParsedBackup } from "@/lib/admin/backup";
 import { formatShortDate } from "@/lib/admin/dates";
-import { clock, commit, eraseDevice, storedBytes } from "@/lib/admin/store";
+import { clock, commit, flush, importMissingRecords, readBrowserImport, readRecoveryImports, useAdminState } from "@/lib/admin/store";
 import type { AdminData } from "@/lib/admin/types";
 
 function backupFile(data: AdminData, now: string) {
   return new File([JSON.stringify(createBackup(data, now), null, 2)], backupFileName(now), { type: "application/json" });
 }
 
-const markBackedUp = (now: string) => commit(d => ({ ...d, meta: { ...d.meta, lastBackupAt: now } }), { immediate: true });
-
 export function BackupPanel({ data }: { data: AdminData }) {
   const input = useRef<HTMLInputElement>(null);
+  const state = useAdminState();
   const [pending, setPending] = useState<ParsedBackup | null>(null);
+  const [legacy, setLegacy] = useState<ParsedBackup | null>(null);
+  const [recoveries, setRecoveries] = useState<ParsedBackup[]>([]);
+  const [recoveryIndex, setRecoveryIndex] = useState(0);
+  const recovery = recoveries[recoveryIndex] ?? null;
+  const [importSettings, setImportSettings] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [error, setError] = useState("");
   const [canShare, setCanShare] = useState(false);
 
   useEffect(() => {
-    navigator.storage?.persisted?.().then(setPersisted, () => setPersisted(null));
-    try {
-      setCanShare(!!navigator.canShare?.({ files: [backupFile(data, clock().now)] }));
-    } catch {
-      setCanShare(false);
-    }
-    // Capability checks only need to run once.
+    setLegacy(readBrowserImport("legacy"));
+    setRecoveries(readRecoveryImports());
+    try { setCanShare(!!navigator.canShare?.({ files: [backupFile(data, clock().now)] })); }
+    catch { setCanShare(false); }
+    // Capability checks and original browser import detection run once on mount.
   }, []);
 
+  const exported = (now: string) => {
+    commit(d => ({ ...d, meta: { ...d.meta, lastBackupAt: now } }));
+    setError("");
+  };
   const download = () => {
     const { now } = clock();
     const url = URL.createObjectURL(backupFile(data, now));
@@ -41,139 +48,102 @@ export function BackupPanel({ data }: { data: AdminData }) {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 2000);
-    markBackedUp(now);
-    setMessage("Backup downloaded. Keep it somewhere safe, such as email or cloud storage.");
+    exported(now);
+    setMessage("Backup downloaded, including any edits still waiting to save. Keep this file private.");
   };
   const share = async () => {
     const { now } = clock();
     try {
       await navigator.share({ files: [backupFile(data, now)], title: "D&M admin backup" });
-      markBackedUp(now);
+      exported(now);
       setMessage("Backup shared.");
-    } catch {
-      setMessage("Sharing was cancelled. You can download the backup instead.");
-    }
+    } catch { setMessage("Sharing was cancelled. You can download the backup instead."); }
+  };
+  const review = (backup: ParsedBackup | null) => {
+    setImportSettings(false);
+    setPending(backup);
+    setError("");
+    setMessage("");
   };
   const choose = async (file: File | undefined) => {
     if (!file) return;
-    setPending(parseBackup(await file.text(), clock().now));
+    if (file.size > 8 * 1024 * 1024) {
+      setError("This file is too large. Choose a D&M backup smaller than 8 MB.");
+      return;
+    }
+    try { review(parseBackup(await file.text(), clock().now)); }
+    catch { setError("The selected file could not be read. Your current records have not changed."); }
     if (input.current) input.current.value = "";
   };
-  const apply = (mode: "merge" | "replace") => {
-    if (!pending?.ok) return;
-    if (mode === "replace" && !window.confirm("Replace everything on this device with the backup? Records not in the backup will be lost.")) return;
+  const apply = async () => {
+    if (!pending?.ok || busy) return;
+    setBusy(true);
+    setError("");
     const incoming = pending.data;
-    commit(d => (mode === "merge" ? mergeData(d, incoming) : { ...incoming, meta: { ...incoming.meta, lastBackupAt: d.meta.lastBackupAt } }), { immediate: true });
+    // The merge happens against the latest in-memory cloud version; no current
+    // record can be removed or replaced by an older browser or backup copy.
+    commit(current => importMissingRecords(current, incoming, importSettings));
+    const saved = await flush();
+    setBusy(false);
     setPending(null);
-    setMessage(mode === "merge" ? "Backup merged with this device." : "This device now matches the backup.");
-  };
-  const erase = () => {
-    const answer = window.prompt('This permanently deletes every quote, invoice, booking and setting on this device. Type ERASE to confirm.');
-    if (answer?.trim().toUpperCase() !== "ERASE") return;
-    eraseDevice();
-    setMessage("All admin data was erased from this device.");
-  };
-  const keepData = async () => {
-    const granted = (await navigator.storage?.persist?.()) ?? false;
-    setPersisted(granted);
-    setMessage(granted ? "The browser agreed to keep this data unless you clear it yourself." : "The browser didn't agree. Back up regularly.");
+    if (saved) setMessage("Missing records imported and saved to cloud storage. Existing cloud records were kept. The source backup is unchanged.");
+    else setError("The import has not reached cloud storage. Your imported records are kept in this page; retry saving or export a backup.");
   };
 
   const records = data.quotes.length + data.invoices.length + data.bookings.length;
-  const kb = Math.max(1, Math.round(storedBytes() / 1024));
+  const added = pending?.ok ? {
+    quotes: pending.data.quotes.filter(record => !data.quotes.some(existing => existing.id === record.id)).length,
+    invoices: pending.data.invoices.filter(record => !data.invoices.some(existing => existing.id === record.id)).length,
+    bookings: pending.data.bookings.filter(record => !data.bookings.some(existing => existing.id === record.id)).length,
+  } : null;
+  const blocked = state?.persistence === "conflict";
 
   return (
-    <Card title="Device storage and backup" id="storage" tone="warn">
+    <Card title="Cloud storage and backups" id="storage">
       <div className="adm-storage">
-        <p>
-          <strong>Everything here is stored only in this browser on this device.</strong> It is not synchronised to other devices
-          and is not backed up online. Clearing browsing data, using private browsing, or (on iPhone and iPad) not opening the
-          admin in Safari for several days can delete it.
-        </p>
+        <p>Your quotes, invoices, diary and business settings are saved securely in Supabase and synchronise across your signed-in devices. Export a private backup whenever you need an extra copy.</p>
         <dl className="adm-facts">
-          <div>
-            <dt>Last backup</dt>
-            <dd className={data.meta.lastBackupAt ? undefined : "adm-warn-text"}>{data.meta.lastBackupAt ? formatShortDate(data.meta.lastBackupAt.slice(0, 10)) : "Never"}</dd>
-          </div>
-          <div>
-            <dt>Records</dt>
-            <dd>{records}</dd>
-          </div>
-          <div>
-            <dt>Size</dt>
-            <dd>{kb} KB</dd>
-          </div>
-          <div>
-            <dt>Browser protection</dt>
-            <dd>{persisted === null ? "Unknown" : persisted ? "Kept" : "Not requested"}</dd>
-          </div>
+          <div><dt>Last exported backup</dt><dd>{data.meta.lastBackupAt ? formatShortDate(data.meta.lastBackupAt.slice(0, 10)) : "Never"}</dd></div>
+          <div><dt>Records</dt><dd>{records}</dd></div>
         </dl>
         <div className="adm-actions">
-          <button type="button" className="adm-btn" onClick={download}>
-            <Icon name="download" size={18} /> Export backup
-          </button>
-          {canShare && (
-            <button type="button" className="adm-btn adm-btn-ghost" onClick={share}>
-              <Icon name="upload" size={18} /> Share backup
-            </button>
-          )}
-          <button type="button" className="adm-btn adm-btn-ghost" onClick={() => input.current?.click()}>
-            <Icon name="upload" size={18} /> Import backup
-          </button>
-          {persisted === false && (
-            <button type="button" className="adm-btn adm-btn-ghost" onClick={keepData}>
-              <Icon name="device" size={18} /> Ask browser to keep data
-            </button>
-          )}
+          <button type="button" className="adm-btn" onClick={download}><Icon name="download" size={18} /> Export backup</button>
+          {canShare && <button type="button" className="adm-btn adm-btn-ghost" onClick={share}><Icon name="upload" size={18} /> Share backup</button>}
+          <button type="button" className="adm-btn adm-btn-ghost" disabled={blocked} onClick={() => input.current?.click()}><Icon name="upload" size={18} /> Import backup</button>
         </div>
-        <input ref={input} type="file" accept="application/json,.json" hidden onChange={e => choose(e.target.files?.[0])} />
-        {message && (
-          <p className="adm-inline-ok" role="status">
-            {message}
-          </p>
-        )}
-        <p className="adm-muted adm-small">
-          Backups are JSON files containing customer details. Store them privately. To move to another device, export here and
-          import there.
-        </p>
-        <button type="button" className="adm-link-danger" onClick={erase}>
-          Erase all admin data from this device
-        </button>
-      </div>
-
-      <Sheet
-        open={!!pending}
-        onClose={() => setPending(null)}
-        title="Import backup"
-        actions={
-          pending?.ok ? (
-            <>
-              <button type="button" className="adm-btn adm-btn-ghost" onClick={() => apply("replace")}>
-                Replace everything
-              </button>
-              <button type="button" className="adm-btn" onClick={() => apply("merge")}>
-                Merge with this device
-              </button>
-            </>
-          ) : undefined
-        }
-      >
-        {pending && !pending.ok && <p className="adm-inline-error">{pending.error}</p>}
-        {pending?.ok && (
-          <div className="adm-stack">
-            <p>
-              Backup {pending.exportedAt && `from ${formatShortDate(pending.exportedAt.slice(0, 10))} `}containing{" "}
-              <strong>
-                {pending.data.quotes.length} quotes, {pending.data.invoices.length} invoices and {pending.data.bookings.length} bookings
-              </strong>
-              .
-            </p>
-            <p className="adm-muted">
-              <strong>Merge</strong> keeps the most recently edited copy of each record and this device&apos;s settings.{" "}
-              <strong>Replace</strong> makes this device an exact copy of the backup.
-            </p>
+        <input ref={input} type="file" accept="application/json,.json" hidden onChange={e => { void choose(e.target.files?.[0]); }} />
+        {legacy && <div className="adm-stack">
+          <p>Records from the original browser admin are still on this device. Review them before importing; the original copy will be kept.</p>
+          <button type="button" className="adm-btn adm-btn-ghost" disabled={blocked} onClick={() => review(legacy)}>Review original browser records</button>
+        </div>}
+        {recovery && <div className="adm-stack">
+          <p>An earlier visit left unsaved edits in this tab. Review or export them before closing this tab.</p>
+          {recoveries.length > 1 && <label className="adm-field"><span className="adm-field-label">Recovered visit</span><select className="adm-input adm-select" value={recoveryIndex} onChange={event => setRecoveryIndex(Number(event.target.value))}>{recoveries.map((item, index) => <option key={index} value={index}>{item.ok && item.exportedAt ? new Date(item.exportedAt).toLocaleString("en-GB") : "Unreadable recovery"}{index === 0 ? " (latest)" : ""}</option>)}</select></label>}
+          <div className="adm-actions">
+            <button type="button" className="adm-btn adm-btn-ghost" disabled={blocked} onClick={() => review(recovery)}>Review recovered edits</button>
+            {recovery.ok && <button type="button" className="adm-btn adm-btn-ghost" onClick={() => {
+              const url = URL.createObjectURL(backupFile(recovery.data, clock().now));
+              const link = document.createElement("a");
+              link.href = url;
+              link.download = "dm-admin-recovered-edits.json";
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 2000);
+            }}>Export recovered edits</button>}
           </div>
-        )}
+        </div>}
+        {message && <p className="adm-inline-ok" role="status">{message}</p>}
+        {error && <p className="adm-inline-error" role="alert">{error}</p>}
+        {blocked && <p className="adm-inline-error">Export your pending edits, then use Reload cloud records above to resolve the conflict before importing.</p>}
+        <p className="adm-muted adm-small">Backup files contain customer details. Store them privately. Importing adds missing records and keeps existing cloud records. Original browser records and backup files are never deleted.</p>
+      </div>
+      <Sheet open={!!pending} onClose={() => { if (!busy) setPending(null); }} title="Review import" actions={pending?.ok ? <button type="button" className="adm-btn" disabled={busy || blocked} onClick={() => { void apply(); }}>{busy ? "Saving import…" : "Import missing records"}</button> : undefined}>
+        {pending && !pending.ok && <p className="adm-inline-error">{pending.error}</p>}
+        {pending?.ok && added && <div className="adm-stack">
+          <p>{pending.exportedAt ? `Backup from ${formatShortDate(pending.exportedAt.slice(0, 10))}. ` : "Original browser records. "}Contains {pending.data.quotes.length} quotes, {pending.data.invoices.length} invoices and {pending.data.bookings.length} bookings.</p>
+          <p><strong>Will add {added.quotes} quotes, {added.invoices} invoices and {added.bookings} bookings.</strong> Existing records with the same ID will be kept. Document numbers may be adjusted securely to prevent duplicates.</p>
+          <label className="adm-check"><input type="checkbox" checked={importSettings} onChange={e => setImportSettings(e.target.checked)} /> Also use business settings from this backup</label>
+          {importSettings && <p className="adm-inline-error">This replaces business contact details, bank details and document defaults. Check the imported settings before sharing any documents.</p>}
+        </div>}
       </Sheet>
     </Card>
   );

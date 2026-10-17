@@ -1,0 +1,8 @@
+.adm-share{display:flex;flex-direction:column;gap:12px;padding:18px;border:1px solid var(--a-line);border-radius:var(--a-radius);background:var(--a-card);margin-bottom:14px}
+.adm-share-heading{display:flex;align-items:center;gap:8px;color:var(--a-teal)}
+.adm-share-heading h2{font-size:16px}
+.adm-share-link{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap}
+.adm-share-link .adm-field{flex:1;min-width:min(100%,220px)}
+.adm-share-link .adm-input{font-size:13px}
+.adm-preview>.adm-share{margin:14px 16px}
+@media(max-width:420px){.adm-share>.adm-actions>.adm-btn{flex:1 1 100%}.adm-share-link>.adm-field{flex-basis:100%}.adm-share-link>.adm-btn{flex:1}}

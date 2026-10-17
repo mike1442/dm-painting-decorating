@@ -47,8 +47,12 @@ export function DocHeader({ kind, number }: { kind: string; number: string }) {
   );
 }
 
+export function TestDocumentNotice() {
+  return <p className="dmdoc-test-notice">Test document · Not issued · No payment required</p>;
+}
+
 export function Party({ heading, customer }: { heading: string; customer: Customer }) {
-  const contact = [customer.email, customer.phone].map(s => s.trim()).filter(Boolean);
+  const contact = [customer.email ?? "", customer.phone ?? ""].map(s => s.trim()).filter(Boolean);
   return (
     <div className="dmdoc-party">
       <p className="dmdoc-label">{heading}</p>
@@ -213,3 +217,4 @@ export function BusinessFooter({ business }: { business: BusinessSettings }) {
     </footer>
   );
 }
+

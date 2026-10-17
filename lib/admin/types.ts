@@ -52,6 +52,7 @@ export type ShareState = {
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";
 
 export type Quote = {
+  isTest?: boolean;
   kind: "quote";
   id: string;
   number: string;
@@ -96,6 +97,7 @@ export type InvoiceStatus = "draft" | "sent";
 
 /** Links live on the child record: invoice.quoteId, booking.quoteId, booking.invoiceId. */
 export type Invoice = {
+  isTest?: boolean;
   kind: "invoice";
   id: string;
   number: string;
@@ -175,3 +177,4 @@ export type AdminData = {
     lastBackupAt: IsoDateTime | null;
   };
 };
+
