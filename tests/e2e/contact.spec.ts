@@ -62,7 +62,7 @@ test("failed enquiry preserves details and uses the same idempotency key when re
     await route.fulfill(ids.length === 1 ? { status: 502, json: { error: "Test delivery unavailable. Please try again." } } : { status: 200, json: { ok: true } });
   });
   await page.getByRole("button", { name: "Send my enquiry" }).click();
-  await expect(page.getByRole("alert")).toContainText("Test delivery unavailable");
+  await expect(page.locator(".dm-contact-form-wrap").getByRole("alert")).toContainText("Test delivery unavailable");
   await expect(page.getByLabel("Email address")).toHaveValue("test@example.com");
   await page.getByRole("button", { name: "Send my enquiry" }).click();
   await expect(page.getByRole("status")).toBeVisible();
@@ -72,6 +72,6 @@ test("failed enquiry preserves details and uses the same idempotency key when re
 
 test("unsupported attachments are rejected before submitting", async ({ page }) => {
   await page.getByLabel("Choose project photos").setInputFiles({ name: "not-a-photo.txt", mimeType: "text/plain", buffer: Buffer.from("not a photo") });
-  await expect(page.getByRole("alert")).toContainText("Please use JPG, PNG, WEBP or HEIC photos.");
+  await expect(page.locator(".dm-contact-form-wrap").getByRole("alert")).toContainText("Please use JPG, PNG, WEBP or HEIC photos.");
   await expect(page.getByRole("button", { name: "Remove not-a-photo.txt" })).toHaveCount(0);
 });

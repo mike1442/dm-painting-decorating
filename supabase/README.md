@@ -27,3 +27,7 @@ Customer access uses only `dm_get_shared_document`. Each share has a cryptograph
 Mike must have a confirmed Supabase Auth account at `mike@dmpaintingdecorating.co.uk`; no account or password is fabricated by this migration. The initial audit found no account for Mike. Provision or invite the user through Supabase Auth, configure the production site URL and permitted redirects, and complete email verification/password setup. Passwords and service-role keys must never be committed or put in browser configuration.
 
 Configure the application's existing Vercel project with `NEXT_PUBLIC_SUPABASE_URL=https://kqjbgvjgsvbjflumorjr.supabase.co` and its server-side `SUPABASE_PUBLISHABLE_KEY` (the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted for compatibility). No service-role key is required. Configure the Auth provider's email delivery before relying on invitations or password recovery. Production rollout must wait for database checks, application checks, a successful build, and real authenticated functional verification.
+
+## Applied upgrade evidence
+
+The reviewed source was applied to the existing project as migration `20261017233851_dm_admin_production_persistence_and_sharing`. Post-application queries confirmed anonymous direct-document access and the private owner reader are denied and an invalid share token returns no document. Do not assume a separate Vercel project's variables are configured from this database result. Mike's actual PR-linked Vercel project is documented in `docs/production-admin.md`.

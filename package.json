@@ -6,19 +6,24 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app/admin app/login app/d app/api/admin app/api/auth components/admin components/documents lib middleware.ts playwright.config.ts tests",
+    "lint": "eslint app/admin app/login app/d app/api/admin app/api/auth components/admin components/documents lib middleware.ts playwright.config.ts playwright.live.config.ts tests",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none \"tests/**/*.test.ts\"",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:e2e:live": "playwright test --config playwright.live.config.ts"
   },
-  "engines": { "node": "24.x" },
+  "engines": {
+    "node": "24.x"
+  },
   "dependencies": {
     "next": "15.5.28",
     "react": "19.1.10",
     "react-dom": "19.1.10"
   },
   "overrides": {
-    "next": { "postcss": "8.5.30" }
+    "next": {
+      "postcss": "8.5.30"
+    }
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.7",

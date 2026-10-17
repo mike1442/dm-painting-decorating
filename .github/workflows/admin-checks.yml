@@ -54,7 +54,7 @@ jobs:
         id: browser
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: npx playwright install --with-deps chromium
-      - name: Desktop and mobile anonymous boundaries
+      - name: Desktop and mobile public workflows
         if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.browser.outcome == 'success' }}
         run: npm run test:e2e
       - name: Upload browser report and resolved dependency lock
