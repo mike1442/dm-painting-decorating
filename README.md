@@ -22,3 +22,7 @@ Import this GitHub repository into Vercel and use the Next.js preset. No environ
 - Add privacy policy and any legally required business information.
 
 Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved concept.
+
+## Admin
+
+`/admin` holds private Quotes, Invoices and Diary tools. Records are currently stored only in the browser on the device being used, so export backups regularly. See [docs/admin.md](docs/admin.md).
