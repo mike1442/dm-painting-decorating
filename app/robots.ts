@@ -1,1 +1,1 @@
-import type{MetadataRoute}from "next";export default function robots():MetadataRoute.Robots{const base=process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/,"");return base?{rules:{userAgent:"*",allow:"/"},sitemap:base+"/sitemap.xml"}:{rules:{userAgent:"*",disallow:"/"}}}
+import type{MetadataRoute}from "next";export default function robots():MetadataRoute.Robots{const base="https://www.dmpaintingdecorating.co.uk";return {rules:{userAgent:"*",disallow:"/"},sitemap:base+"/sitemap.xml"}}
