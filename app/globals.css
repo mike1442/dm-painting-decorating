@@ -15,3 +15,25 @@
 /* Unnumbered service rows */
 .service{grid-template-columns:1fr 1fr 30px}
 @media(max-width:850px){.service{grid-template-columns:1fr 20px}.service p{grid-column:1;grid-row:2}.service-arrow{grid-column:2;grid-row:1}}
+
+/* Premium SEO hubs and location/service spokes */
+.homepage-seo-footer,.seo-footer{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:42px;padding:45px 0 60px;border-top:1px solid var(--line)}
+.homepage-seo-footer>div,.seo-footer>div{display:flex;flex-direction:column;gap:13px}
+.homepage-seo-footer strong,.seo-footer strong{color:#e9eeee;font-size:13px;margin-bottom:10px}
+.homepage-seo-footer a,.seo-footer a{color:#9aa9ad;font-size:12px;line-height:1.5;transition:color .2s}
+.homepage-seo-footer a:hover,.seo-footer a:hover{color:var(--teal)}
+.seo-site{min-height:100vh;background:#0c141a}.seo-header{display:flex;justify-content:space-between;align-items:center;padding:8px 7%;min-height:120px;border-bottom:1px solid var(--line)}
+.seo-header img{width:200px;height:110px;object-fit:contain}.seo-header nav{display:flex;gap:28px;align-items:center;font-size:13px;font-weight:700}.seo-header nav a:last-child{color:var(--teal)}
+.seo-intro{padding:100px 9% 90px;background:radial-gradient(ellipse at 80% 0%,#1c3840 0%,#0c141a 65%);border-bottom:1px solid var(--line)}
+.seo-kicker,.seo-tile>span{font-size:11px;letter-spacing:.2em;color:var(--teal);font-weight:700}
+.seo-intro h1{font-family:Manrope,sans-serif;font-weight:500;font-size:clamp(43px,6vw,82px);letter-spacing:-.06em;line-height:1.12;max-width:1000px;margin:28px 0}
+.seo-intro>p:last-child{font-size:18px;line-height:1.8;max-width:740px;color:#bdc8c8}
+.seo-grid{padding:75px 9% 110px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.seo-tile{background:#14242c;border:1px solid var(--line);padding:35px;min-height:290px;display:flex;flex-direction:column;transition:background .2s,transform .2s}
+.seo-tile:hover{background:#1c333a;transform:translateY(-3px)}.seo-tile h2{font-size:27px;letter-spacing:-.035em;margin:30px 0 15px}.seo-tile p{color:#afbbbe;line-height:1.7;font-size:14px}.seo-tile b{color:var(--teal);font-size:12px;margin-top:auto}
+.seo-article{display:grid;grid-template-columns:minmax(0,2fr) minmax(230px,1fr);gap:12%;padding:85px 9% 120px}.seo-article h2{font-size:clamp(27px,3vw,43px);letter-spacing:-.045em;margin:48px 0 20px}.seo-article h2:first-child{margin-top:0}.seo-article p{font-size:16px;line-height:1.9;color:#bdc8c8}
+.seo-article aside{border-top:1px solid var(--line);padding-top:22px;display:flex;flex-direction:column;gap:15px}.seo-article aside h3{font-size:16px;font-weight:600;margin:0 0 10px}.seo-article aside a,.seo-link-list a{font-size:14px;color:var(--teal);padding:10px 0;border-bottom:1px solid var(--line)}
+.seo-link-list{display:flex;flex-direction:column}.seo-cta{display:inline-block;margin:20px 0 35px;padding:18px 25px;background:var(--teal);color:#0c141a;font-weight:700;font-size:14px}.seo-steps{padding:15px 25px;border-left:2px solid var(--teal);background:#14242c}
+.seo-footer{grid-template-columns:repeat(4,minmax(0,1fr));padding:70px 9% 35px;background:#080f14}.seo-footer p{color:#a6b1b4;line-height:1.6;font-size:13px}.seo-footer-bottom{grid-column:1/-1;border-top:1px solid var(--line);padding-top:24px;display:block!important}
+@media(max-width:850px){.homepage-seo-footer,.seo-footer{grid-template-columns:1fr 1fr;gap:35px}.seo-header{min-height:90px;padding:10px 5%}.seo-header img{width:120px;height:80px}.seo-header nav{gap:12px;font-size:11px;flex-wrap:wrap;justify-content:flex-end}.seo-intro{padding:75px 6%}.seo-grid{padding:50px 6%;grid-template-columns:1fr}.seo-article{padding:55px 6% 85px;grid-template-columns:1fr;gap:40px}.seo-footer{padding:60px 6%}}
+@media(max-width:480px){.homepage-seo-footer,.seo-footer{grid-template-columns:1fr}.seo-header nav{max-width:220px}.seo-header nav a{font-size:10px}.seo-header img{width:105px}.seo-intro>p:last-child{font-size:16px}}
