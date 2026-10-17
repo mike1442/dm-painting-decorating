@@ -3,7 +3,7 @@ name: Database security checks
 on:
   pull_request:
   push:
-    branches: [main, fix/production-admin, "production-admin/**"]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

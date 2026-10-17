@@ -43,8 +43,8 @@ begin
   for p in select schemaname, tablename, policyname from pg_policies
     where schemaname = 'public' and tablename in ('admin_members', 'admin_documents', 'admin_settings', 'admin_sequences')
   loop execute format('drop policy %I on %I.%I', p.policyname, p.schemaname, p.tablename); end loop;
-  for p in select p.oid::regprocedure as signature from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname like 'dm_admin_%'
+  for p in select proc.oid::regprocedure as signature from pg_proc proc join pg_namespace n on n.oid = proc.pronamespace
+    where n.nspname = 'public' and proc.proname like 'dm_admin_%'
   loop execute format('revoke all on function %s from public, anon, authenticated', p.signature); end loop;
 end
 $block$;

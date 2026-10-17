@@ -31,8 +31,8 @@ export function BackupPanel({ data }: { data: AdminData }) {
     setRecoveries(readRecoveryImports());
     try { setCanShare(!!navigator.canShare?.({ files: [backupFile(data, clock().now)] })); }
     catch { setCanShare(false); }
-    // Capability checks and original browser import detection run once on mount.
-  }, []);
+    // Recheck sharing support and recoveries when the record set changes.
+  }, [data]);
 
   const exported = (now: string) => {
     commit(d => ({ ...d, meta: { ...d.meta, lastBackupAt: now } }));

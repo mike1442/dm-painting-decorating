@@ -5,13 +5,13 @@ Premium, preparation-led Next.js website. Built with Next.js App Router and Type
 ## Start
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
 ## Deploy
 
-Import this GitHub repository into Vercel and use the Next.js preset. No environment variables are needed for the initial static site.
+Use the existing Vercel project and Supabase project. Configure the public API URL/key from `.env.example`; no service-role key is needed. See [production operations](docs/production-admin.md) for the account, migration and release checks.
 
 ## Before launch
 
@@ -25,4 +25,5 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 ## Admin
 
-`/admin` holds private Quotes, Invoices and Diary tools. Records are currently stored only in the browser on the device being used, so export backups regularly. See [docs/admin.md](docs/admin.md).
+`/admin` holds private Quotes, Invoices and Diary tools. Records use authenticated Supabase storage, with safe imports for existing browser records, revision conflict protection and revocable customer links. See [docs/admin.md](docs/admin.md).
+

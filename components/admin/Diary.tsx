@@ -130,7 +130,6 @@ export function Diary() {
   const [view, setView] = useState<"month" | "week">("month");
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Booking | null>(null);
-  const ready = !!state;
 
   // Links from quotes, invoices and booking chips: ?fromQuote=, ?fromInvoice=, ?date=
   useEffect(() => {
@@ -155,8 +154,8 @@ export function Diary() {
       );
     }
     if (quote || invoice) router.replace(isIsoDate(date) ? `/admin/diary?date=${date}` : "/admin/diary", { scroll: false });
-    // Only react to the URL (and first load), not to every edit of the data.
-  }, [ready, params]);
+    // Once consumed, linked-document parameters are removed from the URL.
+  }, [state, params, router]);
 
   if (!state) return <Loading />;
   const { data } = state;
@@ -303,3 +302,4 @@ export function Diary() {
     </div>
   );
 }
+
