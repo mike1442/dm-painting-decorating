@@ -1,7 +1,7 @@
 "use client";
 import {useRef,useState} from "react";
 const email="info@dmpaintingdecorating.co.uk";
-const wa=(process.env.NEXT_PUBLIC_DM_WHATSAPP_NUMBER||"").replace(/\D/g,"");
+const wa="447449255082";
 type Status="idle"|"sending"|"success"|"error";
 export function ContactForm(){
 const [photos,setPhotos]=useState<File[]>([]);const [status,setStatus]=useState<Status>("idle");const [error,setError]=useState("");const input=useRef<HTMLInputElement>(null);
