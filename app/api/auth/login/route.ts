@@ -5,7 +5,7 @@ export async function POST(request: Request) {
   try {
     if (!sameOrigin(request)) return json({ error: "Invalid request origin." }, 403);
     const body = await readBody(request, 4000);
-    if (body.email?.trim().toLowerCase() !== ADMIN_EMAIL || typeof body.password !== "string" || body.password.length < 8 || body.password.length > 200) return json({ error: "Check your email and password." }, 400);
+    if (typeof body?.email !== "string" || body.email.trim().toLowerCase() !== ADMIN_EMAIL || typeof body.password !== "string" || body.password.length < 8 || body.password.length > 200) return json({ error: "Check your email and password." }, 400);
     const session: AuthSession = await supabaseRequest("/auth/v1/token?grant_type=password", { method: "POST", body: { email: ADMIN_EMAIL, password: body.password } });
     if (!await verifyAdmin(session.access_token)) return json({ error: "This account is not authorised as the administrator." }, 403);
     const response = json({ ok: true });

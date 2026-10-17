@@ -56,7 +56,8 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     try {
       const response = await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
       if (!response.ok) throw new Error("Logout failed");
-      window.location.assign("/login");
+      const result = await response.json();
+      window.location.assign(result.revoked === false ? "/login?signout=local" : "/login");
     } catch {
       setLogoutBusy(false);
       setLogoutError("Could not sign out. Check your connection and try again.");
