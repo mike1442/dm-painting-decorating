@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import "./admin.css";
-import { AdminShell } from "@/components/admin/AdminShell";
 
 export const metadata: Metadata = {
   title: { default: "D&M Admin", template: "%s · D&M Admin" },
@@ -13,5 +12,5 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: "#0c141a", viewportFit: "cover" };
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  return <AdminShell>{children}</AdminShell>;
+  return children;
 }

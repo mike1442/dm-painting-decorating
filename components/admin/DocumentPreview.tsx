@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect } from "react";
 import { Icon } from "./Icon";
-import { Loading, NotOnDevice } from "./ui";
+import { Loading, NotFound } from "./ui";
 import { InvoiceDocument } from "@/components/documents/InvoiceDocument";
 import { QuoteDocument } from "@/components/documents/QuoteDocument";
 import { updateInvoice, updateQuote } from "@/lib/admin/operations";
@@ -25,7 +25,7 @@ export function DocumentPreview({ kind, id }: { kind: "quote" | "invoice"; id: s
   }, [fileTitle]);
 
   if (!state) return <Loading />;
-  if (!doc) return <NotOnDevice kind={kind} href={`/admin/${kind}s`} />;
+  if (!doc) return <NotFound kind={kind} href={`/admin/${kind}s`} />;
 
   const markSent = () =>
     commit(d =>
@@ -47,7 +47,7 @@ export function DocumentPreview({ kind, id }: { kind: "quote" | "invoice"; id: s
       <p className="adm-preview-note adm-chrome">
         <Icon name="device" size={16} />
         <span>
-          Private preview. This page only works on this device, so don&apos;t send its address to a customer. Choose{" "}
+          Private preview. Only signed-in D&amp;M admins can open this page, so don&apos;t send its address to a customer. Choose{" "}
           <strong>Print / Save PDF</strong> and send the PDF instead.
         </span>
       </p>

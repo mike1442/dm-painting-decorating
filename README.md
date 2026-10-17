@@ -25,4 +25,4 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 ## Admin
 
-`/admin` holds private Quotes, Invoices and Diary tools. Records are currently stored only in the browser on the device being used, so export backups regularly. See [docs/admin.md](docs/admin.md).
+`/admin` holds private Quotes, Invoices and Diary tools for signed-in D&M admins, saved online in Supabase. See [docs/admin.md](docs/admin.md) and [docs/supabase-integration.md](docs/supabase-integration.md).

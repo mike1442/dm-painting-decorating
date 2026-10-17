@@ -9,13 +9,16 @@ import { formatShortDate } from "@/lib/admin/dates";
 import { documentTotals, formatPence, invoiceTotals } from "@/lib/admin/money";
 import { createInvoice } from "@/lib/admin/operations";
 import { invoiceState } from "@/lib/admin/status";
-import { clock, commit, useAdminState } from "@/lib/admin/store";
+import { errorMessage } from "@/lib/admin/repository";
+import { allocateNumber, clock, commit, useAdminState } from "@/lib/admin/store";
 
 export function InvoiceList() {
   const router = useRouter();
   const state = useAdminState();
   const [query, setQuery] = useState("");
   const [choosing, setChoosing] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
   if (!state) return <Loading />;
 
   const today = clock().today;
@@ -31,24 +34,33 @@ export function InvoiceList() {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .slice(0, 12);
 
-  const create = (fromQuoteId?: string) => {
-    let invoiceId = "";
-    commit(
-      d => {
-        const created = createInvoice(d, clock(), fromQuoteId);
-        invoiceId = created.invoice.id;
-        return created.data;
-      },
-      { immediate: true },
-    );
-    router.push(`/admin/invoices/${invoiceId}`);
+  const create = async (fromQuoteId?: string) => {
+    setCreating(true);
+    setCreateError("");
+    try {
+      const number = await allocateNumber("invoice");
+      let invoiceId = "";
+      commit(
+        d => {
+          const created = createInvoice(d, clock(), fromQuoteId, number);
+          invoiceId = created.invoice.id;
+          return created.data;
+        },
+        { immediate: true },
+      );
+      router.push(`/admin/invoices/${invoiceId}`);
+    } catch (error) {
+      setCreateError(`Couldn't create the invoice. ${errorMessage(error)}`);
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
     <div className="adm-page">
       <PageHead
         title="Invoices"
-        subtitle={outstanding > 0 ? `${formatPence(outstanding)} outstanding on sent invoices` : `${invoices.length} on this device`}
+        subtitle={outstanding > 0 ? `${formatPence(outstanding)} outstanding on sent invoices` : `${invoices.length} saved`}
         action={
           <button type="button" className="adm-btn" onClick={() => setChoosing(true)}>
             <Icon name="plus" size={18} /> New invoice
@@ -103,7 +115,7 @@ export function InvoiceList() {
             <p className="adm-sheet-label">From a quote: everything is copied across</p>
             <div className="adm-choices">
               {convertible.map(q => (
-                <button type="button" key={q.id} className="adm-choice" onClick={() => create(q.id)}>
+                <button type="button" key={q.id} className="adm-choice" onClick={() => create(q.id)} disabled={creating}>
                   <Icon name="quote" size={22} />
                   <span>
                     <strong>{q.title || "Untitled quote"}</strong>
@@ -118,7 +130,7 @@ export function InvoiceList() {
         )}
         <p className="adm-sheet-label">Or start empty</p>
         <div className="adm-choices">
-          <button type="button" className="adm-choice" onClick={() => create()}>
+          <button type="button" className="adm-choice" onClick={() => create()} disabled={creating}>
             <Icon name="invoice" size={22} />
             <span>
               <strong>Blank invoice</strong>
@@ -126,6 +138,7 @@ export function InvoiceList() {
             </span>
           </button>
         </div>
+        {createError && <p className="adm-inline-error">{createError}</p>}
       </Sheet>
     </div>
   );

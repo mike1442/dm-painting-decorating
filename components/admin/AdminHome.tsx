@@ -1,14 +1,21 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { Loading } from "./ui";
 import { formatRange } from "@/lib/admin/dates";
 import { formatPence, invoiceTotals } from "@/lib/admin/money";
 import { bookingsOn } from "@/lib/admin/operations";
+import { readLegacyRecords } from "@/lib/admin/legacy";
 import { clock, useAdminState } from "@/lib/admin/store";
 
 export function AdminHome() {
   const state = useAdminState();
+  const [legacy, setLegacy] = useState(false);
+  useEffect(() => {
+    const records = readLegacyRecords();
+    setLegacy(!!records && !records.importedAt);
+  }, []);
   if (!state) return <Loading />;
   const { quotes, invoices, bookings, meta } = state.data;
   const today = clock().today;
@@ -37,7 +44,7 @@ export function AdminHome() {
             <Icon name="invoice" size={26} />
           </span>
           <strong>Invoices</strong>
-          <span>{owed ? `${formatPence(owed)} outstanding` : invoices.length ? `${invoices.length} on this device` : "Convert a quote in one tap"}</span>
+          <span>{owed ? `${formatPence(owed)} outstanding` : invoices.length ? `${invoices.length} saved` : "Convert a quote in one tap"}</span>
         </Link>
         <Link href="/admin/diary" className="adm-tile">
           <span className="adm-tile-icon">
@@ -54,11 +61,20 @@ export function AdminHome() {
         </Link>
       </div>
 
-      <Link href="/admin/settings#storage" className={"adm-storage-strip" + (meta.lastBackupAt ? "" : " is-warn")}>
-        <Icon name={meta.lastBackupAt ? "device" : "alert"} size={20} />
+      {legacy && (
+        <Link href="/admin/settings#browser-records" className="adm-storage-strip is-warn">
+          <Icon name="alert" size={20} />
+          <span>
+            <strong>Records found in this browser.</strong> Review and import them so they&apos;re saved online.
+          </span>
+          <Icon name="next" size={18} />
+        </Link>
+      )}
+      <Link href="/admin/settings#storage" className="adm-storage-strip">
+        <Icon name="check" size={20} />
         <span>
-          <strong>Stored on this device only.</strong> Not synchronised or backed up online.{" "}
-          {meta.lastBackupAt ? "Export a backup regularly." : "You haven't exported a backup yet."}
+          <strong>Saved online.</strong> The same records on your phone and computer.{" "}
+          {meta.lastBackupAt ? "Export a backup now and then." : "You haven't exported a backup yet."}
         </span>
         <Icon name="next" size={18} />
       </Link>

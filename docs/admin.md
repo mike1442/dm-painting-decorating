@@ -1,14 +1,16 @@
 # D&M admin (`/admin`)
 
-A private, mobile-first tool with three sections: **Quotes**, **Invoices** and **Diary**. Business details and backups live behind the settings icon.
+A private, mobile-first tool with three sections: **Quotes**, **Invoices** and **Diary**. Business details, backups and the account live behind the settings icon.
 
-## Important: records are stored on this device only
+## Signing in and storage
 
-There is no database yet. Everything is saved in the browser's `localStorage` on the device being used:
-
-- Not synchronised between phone, tablet and computer.
-- Not backed up online. Clearing browsing data, private browsing or Safari's storage clean-up (iPhone/iPad, after several days without a visit) can delete it.
-- Use **Settings → Export backup** regularly. A backup is a JSON file containing customer details, so store it privately. **Import backup** can merge it into another device or replace that device's data.
+- Only signed-in Supabase Auth users who are listed in `admin_members` can open any `/admin` page. There is no public sign-up.
+- Records are saved online in Supabase, so the same quotes, invoices, payments, diary bookings and settings appear on every device where Mike signs in.
+- Edits save automatically about a second after typing stops. The status pill in the header shows **Saved**, **Saving…**, **Offline** or **Check changes**. Nothing is shown as saved until the server has confirmed it.
+- With no signal, edits wait on the page and save when the connection returns. The browser warns before closing a page with unsaved changes.
+- If the same record is changed on two devices at once, the second device is asked which version to keep. Nothing is silently overwritten. Different settings changed on different devices are merged automatically.
+- Quote and invoice numbers are handed out by the database, so two devices can never issue the same number.
+- **Settings → Export backup** still produces a JSON file in the same format as before. **Import backup**, and the import of records left in a browser by the earlier device-only version, always show a review first: new records are added, records that already exist online are never replaced unless ticked, and numbers already in use are given new ones.
 
 ## Workflow
 
@@ -19,41 +21,36 @@ There is no database yet. Everything is saved in the browser's `localStorage` on
 
 No decorating rates are built in. VAT is off unless turned on per document (or as the default in Settings) and never assumed.
 
-## What is temporary
-
-| Area | Now | Needs a backend (e.g. Supabase) |
-| --- | --- | --- |
-| Storage | `localStorage`, one device | Shared database with backups |
-| Sign-in | None. The pages hold no customer data; each browser only sees its own records | Real authentication in `lib/admin/auth.ts` |
-| Customer links | Not offered. Previews only work on the device that made them | Permanent tokenised links (see below) |
-| ChatGPT | Paste JSON by hand | Authenticated API or Custom GPT action using `quoteInputJsonSchema` |
-| Payments | Recorded manually per invoice | Payment tracking, reminders, reconciliation |
-| Numbering | Counts up per device | Allocated centrally so numbers never clash |
-
 ## Structure
 
-- `lib/admin/types.ts`: the data model (quotes, invoices, bookings, settings). Money is pounds excluding VAT; calculations run in whole pence (`money.ts`).
-- `lib/admin/operations.ts`: pure create/convert/link/delete operations, unit tested. Links live on the child record (`invoice.quoteId`, `booking.quoteId`, `booking.invoiceId`), ready to become foreign keys.
-- `lib/admin/normalise.ts`: validates anything read from storage, backups or pasted JSON.
-- `lib/admin/chatgpt.ts`: input format, JSON Schema and parser for ChatGPT-produced quotes.
-- `lib/admin/store.ts`: the temporary `localStorage` store. Replace this module when a backend is connected.
-- `components/documents/`: the quotation and invoice templates. They are plain, hook-free components so a future public customer-link page can render them on the server.
+- `lib/admin/types.ts`, `operations.ts`, `money.ts`: the data model, pure operations and calculations (unchanged in behaviour).
+- `lib/admin/remote.ts`: mapping between records and the `admin_documents` / `admin_settings` rows.
+- `lib/admin/sync.ts`: the sync engine (change tracking, versioned saves, conflicts, settings merge, refresh). No React or Supabase imports, so it is unit tested against `tests/admin/fake-repository.ts`.
+- `lib/admin/supabase-repository.ts`: the Supabase implementation of `AdminRepository`.
+- `lib/admin/store.ts`: React glue. Saves after edits, retries when back online, refreshes when the page regains focus and every 45 seconds while visible.
+- `lib/admin/importer.ts`, `legacy.ts`: reviewable import of backups and of old browser-only records.
+- `lib/admin/auth.ts`, `session.ts`, `middleware.ts`: access rules, server-side checks and security headers.
+- `supabase/migrations/`: SQL the database needs. `supabase/tests/admin_security.sql`: security checks to run in the SQL editor.
+- `components/documents/`: the quotation and invoice templates, unchanged.
 
-## Security
+## Not included yet
 
-- `middleware.ts` runs only for `/admin` and `/api/admin`. It adds `X-Robots-Tag: noindex`, `Referrer-Policy: no-referrer` and `X-Frame-Options: DENY`, and refuses every `/api/admin/*` request with 401 until real authentication exists.
-- Admin pages also carry `noindex` metadata and no canonical link. They are not linked from the public site or listed in the sitemap.
-- `/admin` is deliberately left out of `robots.txt`: a robots block would stop crawlers from seeing the `noindex` header and would advertise the path.
-- There are no passwords or fake log-ins. Opening `/admin` on another device shows an empty app.
+| Area | Now | Later |
+| --- | --- | --- |
+| Customer links | Not offered. Admin previews only work for signed-in admins | Tokenised public links rendering `QuoteDocument` / `InvoiceDocument` |
+| Live updates | Other devices' changes appear on focus, on reconnect and every 45 seconds | Supabase Realtime subscription |
+| Offline | Unsaved edits are kept on the open page only | Optional on-device outbox |
+| ChatGPT | Paste JSON by hand | Authenticated API or Custom GPT action using `quoteInputJsonSchema` |
+| Payments | Recorded manually per invoice | Payment tracking, reminders, reconciliation |
+| Customers | Stored on each quote and invoice | A separate customer directory, if wanted |
 
-## Future customer links
-
-`Quote.share` and `Invoice.share` are reserved (`token: null`). When a backend exists: store documents server-side, issue long random tokens, serve them from a separate public route (e.g. `/q/[token]`) that renders `QuoteDocument` / `InvoiceDocument` with `noindex`, and let customers accept quotes there. Until then the admin never shows a URL as something to send to a customer.
+Setup, configuration and the release checklist are in [docs/supabase-integration.md](supabase-integration.md).
 
 ## Tests
 
 ```bash
-npm test        # unit tests for calculations, dates, conversion, ChatGPT parsing and backups
+npm test                 # unit tests: calculations, sync engine, conflicts, numbering, import, access rules
 npx tsc --noEmit
 npm run build
+npm run test:integration # needs a local Supabase stack, see docs/supabase-integration.md
 ```

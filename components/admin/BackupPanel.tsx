@@ -1,48 +1,70 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
-import { Card, Sheet } from "./ui";
-import { backupFileName, createBackup, mergeData, parseBackup } from "@/lib/admin/backup";
-import type { ParsedBackup } from "@/lib/admin/backup";
+import { ImportReview } from "./ImportReview";
+import type { ImportResult, ImportSource } from "./ImportReview";
+import { Card } from "./ui";
+import { backupFileName, createBackup, parseBackup } from "@/lib/admin/backup";
 import { formatShortDate } from "@/lib/admin/dates";
-import { clock, commit, eraseDevice, storedBytes } from "@/lib/admin/store";
+import { countRecords } from "@/lib/admin/importer";
+import { markLegacyImported, readLegacyRecords, removeLegacyRecords } from "@/lib/admin/legacy";
+import type { LegacyRecords } from "@/lib/admin/legacy";
+import { clock, commit, useSyncStatus } from "@/lib/admin/store";
 import type { AdminData } from "@/lib/admin/types";
 
 function backupFile(data: AdminData, now: string) {
   return new File([JSON.stringify(createBackup(data, now), null, 2)], backupFileName(now), { type: "application/json" });
 }
 
+function download(file: File) {
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
 const markBackedUp = (now: string) => commit(d => ({ ...d, meta: { ...d.meta, lastBackupAt: now } }), { immediate: true });
+
+const syncText = { saved: "All saved", saving: "Saving…", offline: "Offline", failed: "Not saved", conflict: "Needs attention", "signed-out": "Signed out" };
+
+function summary(result: ImportResult): string {
+  const parts = [`Imported ${plural(result.imported, "record")}.`];
+  if (result.renumbered.length) parts.push(`Renumbered: ${result.renumbered.map(r => `${r.from} → ${r.to}`).join(", ")}.`);
+  parts.push(result.saved ? "Everything is saved online." : "Saving is still in progress; keep this page open until it says Saved.");
+  return parts.join(" ");
+}
 
 export function BackupPanel({ data }: { data: AdminData }) {
   const input = useRef<HTMLInputElement>(null);
-  const [pending, setPending] = useState<ParsedBackup | null>(null);
+  const sync = useSyncStatus();
+  const [source, setSource] = useState<ImportSource | null>(null);
+  const [fromBrowser, setFromBrowser] = useState(false);
+  const [legacy, setLegacy] = useState<LegacyRecords | null>(null);
   const [message, setMessage] = useState("");
-  const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [fileError, setFileError] = useState("");
   const [canShare, setCanShare] = useState(false);
 
   useEffect(() => {
-    navigator.storage?.persisted?.().then(setPersisted, () => setPersisted(null));
+    setLegacy(readLegacyRecords());
     try {
       setCanShare(!!navigator.canShare?.({ files: [backupFile(data, clock().now)] }));
     } catch {
       setCanShare(false);
     }
-    // Capability checks only need to run once.
+    // Capability and legacy checks only need to run once.
   }, []);
 
-  const download = () => {
+  const exportBackup = () => {
     const { now } = clock();
-    const url = URL.createObjectURL(backupFile(data, now));
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = backupFileName(now);
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    download(backupFile(data, now));
     markBackedUp(now);
-    setMessage("Backup downloaded. Keep it somewhere safe, such as email or cloud storage.");
+    setMessage("Backup downloaded. Keep it somewhere private, such as your email or cloud storage.");
   };
   const share = async () => {
     const { now } = clock();
@@ -54,62 +76,71 @@ export function BackupPanel({ data }: { data: AdminData }) {
       setMessage("Sharing was cancelled. You can download the backup instead.");
     }
   };
-  const choose = async (file: File | undefined) => {
-    if (!file) return;
-    setPending(parseBackup(await file.text(), clock().now));
+  const chooseFile = async (file: File | undefined) => {
     if (input.current) input.current.value = "";
+    if (!file) return;
+    const parsed = parseBackup(await file.text(), clock().now);
+    if (!parsed.ok) {
+      setFileError(parsed.error);
+      return;
+    }
+    setFileError("");
+    setFromBrowser(false);
+    setSource({ name: `the backup ${file.name}`, data: parsed.data });
   };
-  const apply = (mode: "merge" | "replace") => {
-    if (!pending?.ok) return;
-    if (mode === "replace" && !window.confirm("Replace everything on this device with the backup? Records not in the backup will be lost.")) return;
-    const incoming = pending.data;
-    commit(d => (mode === "merge" ? mergeData(d, incoming) : { ...incoming, meta: { ...incoming.meta, lastBackupAt: d.meta.lastBackupAt } }), { immediate: true });
-    setPending(null);
-    setMessage(mode === "merge" ? "Backup merged with this device." : "This device now matches the backup.");
+  const reviewBrowserRecords = () => {
+    if (!legacy) return;
+    setFromBrowser(true);
+    setSource({ name: "this browser's old storage", data: legacy.data });
   };
-  const erase = () => {
-    const answer = window.prompt('This permanently deletes every quote, invoice, booking and setting on this device. Type ERASE to confirm.');
-    if (answer?.trim().toUpperCase() !== "ERASE") return;
-    eraseDevice();
-    setMessage("All admin data was erased from this device.");
+  const finished = (result: ImportResult) => {
+    setSource(null);
+    setMessage(summary(result));
+    if (fromBrowser) {
+      markLegacyImported(clock().now);
+      setLegacy(readLegacyRecords());
+    }
   };
-  const keepData = async () => {
-    const granted = (await navigator.storage?.persist?.()) ?? false;
-    setPersisted(granted);
-    setMessage(granted ? "The browser agreed to keep this data unless you clear it yourself." : "The browser didn't agree. Back up regularly.");
+  const removeBrowserCopy = () => {
+    if (!window.confirm("Remove the old copy of these records from this browser? Records already saved online are not affected.")) return;
+    removeLegacyRecords();
+    setLegacy(null);
+    setMessage("The old browser copy was removed.");
   };
 
-  const records = data.quotes.length + data.invoices.length + data.bookings.length;
-  const kb = Math.max(1, Math.round(storedBytes() / 1024));
+  const records = countRecords(data);
+  const legacyCount = legacy ? countRecords(legacy.data) : 0;
 
   return (
-    <Card title="Device storage and backup" id="storage" tone="warn">
+    <Card title="Storage and backup" id="storage">
       <div className="adm-storage">
         <p>
-          <strong>Everything here is stored only in this browser on this device.</strong> It is not synchronised to other devices
-          and is not backed up online. Clearing browsing data, using private browsing, or (on iPhone and iPad) not opening the
-          admin in Safari for several days can delete it.
+          <strong>Records are saved online in D&amp;M&apos;s private database,</strong> so they are the same on your phone and
+          computer once you sign in. Only signed-in D&amp;M admins can see them. Exporting a backup now and then is still worth
+          doing.
         </p>
         <dl className="adm-facts">
           <div>
-            <dt>Last backup</dt>
-            <dd className={data.meta.lastBackupAt ? undefined : "adm-warn-text"}>{data.meta.lastBackupAt ? formatShortDate(data.meta.lastBackupAt.slice(0, 10)) : "Never"}</dd>
+            <dt>Status</dt>
+            <dd className={sync.persistence === "saved" ? undefined : "adm-warn-text"}>{syncText[sync.persistence]}</dd>
           </div>
           <div>
             <dt>Records</dt>
             <dd>{records}</dd>
           </div>
           <div>
-            <dt>Size</dt>
-            <dd>{kb} KB</dd>
+            <dt>Last saved</dt>
+            <dd>{sync.lastSavedAt ? new Date(sync.lastSavedAt).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }) : "No changes yet"}</dd>
           </div>
           <div>
-            <dt>Browser protection</dt>
-            <dd>{persisted === null ? "Unknown" : persisted ? "Kept" : "Not requested"}</dd>
+            <dt>Last backup</dt>
+            <dd className={data.meta.lastBackupAt ? undefined : "adm-warn-text"}>
+              {data.meta.lastBackupAt ? formatShortDate(data.meta.lastBackupAt.slice(0, 10)) : "Never"}
+            </dd>
           </div>
         </dl>
         <div className="adm-actions">
-          <button type="button" className="adm-btn" onClick={download}>
+          <button type="button" className="adm-btn" onClick={exportBackup}>
             <Icon name="download" size={18} /> Export backup
           </button>
           {canShare && (
@@ -120,61 +151,48 @@ export function BackupPanel({ data }: { data: AdminData }) {
           <button type="button" className="adm-btn adm-btn-ghost" onClick={() => input.current?.click()}>
             <Icon name="upload" size={18} /> Import backup
           </button>
-          {persisted === false && (
-            <button type="button" className="adm-btn adm-btn-ghost" onClick={keepData}>
-              <Icon name="device" size={18} /> Ask browser to keep data
-            </button>
-          )}
         </div>
-        <input ref={input} type="file" accept="application/json,.json" hidden onChange={e => choose(e.target.files?.[0])} />
+        <input ref={input} type="file" accept="application/json,.json" hidden onChange={e => chooseFile(e.target.files?.[0])} />
+        {fileError && <p className="adm-inline-error">{fileError}</p>}
         {message && (
           <p className="adm-inline-ok" role="status">
             {message}
           </p>
         )}
         <p className="adm-muted adm-small">
-          Backups are JSON files containing customer details. Store them privately. To move to another device, export here and
-          import there.
+          Backup files contain customer details, so store them privately. Importing always shows what will change first.
         </p>
-        <button type="button" className="adm-link-danger" onClick={erase}>
-          Erase all admin data from this device
-        </button>
       </div>
 
-      <Sheet
-        open={!!pending}
-        onClose={() => setPending(null)}
-        title="Import backup"
-        actions={
-          pending?.ok ? (
-            <>
-              <button type="button" className="adm-btn adm-btn-ghost" onClick={() => apply("replace")}>
-                Replace everything
-              </button>
-              <button type="button" className="adm-btn" onClick={() => apply("merge")}>
-                Merge with this device
-              </button>
-            </>
-          ) : undefined
-        }
-      >
-        {pending && !pending.ok && <p className="adm-inline-error">{pending.error}</p>}
-        {pending?.ok && (
-          <div className="adm-stack">
+      {legacy && (
+        <div className="adm-legacy" id="browser-records">
+          <h3>Records saved only in this browser</h3>
+          {legacyCount > 0 ? (
             <p>
-              Backup {pending.exportedAt && `from ${formatShortDate(pending.exportedAt.slice(0, 10))} `}containing{" "}
-              <strong>
-                {pending.data.quotes.length} quotes, {pending.data.invoices.length} invoices and {pending.data.bookings.length} bookings
-              </strong>
-              .
+              This browser still holds {plural(legacy.data.quotes.length, "quote")}, {plural(legacy.data.invoices.length, "invoice")} and{" "}
+              {plural(legacy.data.bookings.length, "booking")} from before online saving was switched on.
+              {legacy.importedAt ? ` They were imported on ${formatShortDate(legacy.importedAt.slice(0, 10))}.` : ""}
             </p>
-            <p className="adm-muted">
-              <strong>Merge</strong> keeps the most recently edited copy of each record and this device&apos;s settings.{" "}
-              <strong>Replace</strong> makes this device an exact copy of the backup.
-            </p>
+          ) : (
+            <p>This browser still holds business settings from before online saving was switched on.</p>
+          )}
+          <div className="adm-actions">
+            <button type="button" className={legacy.importedAt ? "adm-btn adm-btn-ghost" : "adm-btn"} onClick={reviewBrowserRecords}>
+              {legacy.importedAt ? "Review again" : "Review and import"}
+            </button>
+            <button type="button" className="adm-btn adm-btn-ghost" onClick={() => download(backupFile(legacy.data, clock().now))}>
+              <Icon name="download" size={18} /> Download a copy
+            </button>
+            {legacy.importedAt && (
+              <button type="button" className="adm-btn adm-btn-ghost" onClick={removeBrowserCopy}>
+                Remove the browser copy
+              </button>
+            )}
           </div>
-        )}
-      </Sheet>
+        </div>
+      )}
+
+      <ImportReview source={source} onClose={() => setSource(null)} onDone={finished} />
     </Card>
   );
 }

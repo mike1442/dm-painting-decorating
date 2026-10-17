@@ -54,10 +54,12 @@ export function StateChip({ state }: { state: QuoteState | InvoiceState }) {
 }
 
 const saveLabels: Record<Persistence, string> = {
-  saved: "Saved on this device",
+  saved: "Saved",
   saving: "Saving…",
+  offline: "Offline, will retry",
   failed: "Not saved",
-  unavailable: "Not saving",
+  conflict: "Needs attention",
+  "signed-out": "Signed out",
 };
 
 export function SaveStatus({ persistence }: { persistence: Persistence }) {
@@ -91,14 +93,11 @@ export function Empty({ icon, title, children }: { icon: IconName; title: string
   );
 }
 
-/** Shown when a link points at a record that is not stored in this browser. */
-export function NotOnDevice({ kind, href }: { kind: string; href: string }) {
+/** Shown when a link points at a record that doesn't exist (or no longer exists). */
+export function NotFound({ kind, href }: { kind: string; href: string }) {
   return (
-    <Empty icon="device" title={`This ${kind} isn't on this device`}>
-      <p>
-        Records are only stored in the browser where they were created. If it was made on another phone or computer,
-        export a backup there and import it here.
-      </p>
+    <Empty icon="alert" title={`This ${kind} couldn't be found`}>
+      <p>It may have been deleted, possibly on another device. Check the list for the latest records.</p>
       <Link className="adm-btn" href={href}>
         Back to {kind}s
       </Link>
@@ -155,8 +154,8 @@ export function CustomerLinkNotice({ kind }: { kind: "quotation" | "invoice" }) 
   return (
     <Card title="Customer link" tone="quiet" aside={<span className="adm-chip adm-chip-muted">Not available yet</span>}>
       <p className="adm-muted">
-        Permanent links for customers need secure online storage, which isn&apos;t connected yet. This {kind} only exists
-        on this device, so there is no link a customer could open. To send it, use <strong>Preview</strong> then{" "}
+        Links that customers can open aren&apos;t switched on yet. Admin pages, including previews, only work for signed-in
+        D&amp;M admins, so never send their address to a customer. To send this {kind}, use <strong>Preview</strong> then{" "}
         <strong>Print / Save as PDF</strong>.
       </p>
     </Card>

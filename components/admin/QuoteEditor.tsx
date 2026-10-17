@@ -6,12 +6,13 @@ import { DepositControls, TotalsSummary, VatControls } from "./DocumentControls"
 import { CustomerFields, DateField, LinesField, SelectField, TextArea, TextField } from "./fields";
 import { Icon } from "./Icon";
 import { LineItemsEditor, UnitSuggestions } from "./LineItemsEditor";
-import { Card, CustomerLinkNotice, Loading, NotOnDevice, PageHead, SaveStatus, StateChip } from "./ui";
+import { Card, CustomerLinkNotice, Loading, NotFound, PageHead, SaveStatus, StateChip } from "./ui";
 import { addDays, daysBetween, formatShortDate } from "@/lib/admin/dates";
 import { depositPence, documentTotals, formatPence } from "@/lib/admin/money";
 import { createInvoice, deleteQuote, duplicateQuote, updateQuote } from "@/lib/admin/operations";
 import { quoteState } from "@/lib/admin/status";
-import { clock, commit, useAdminState } from "@/lib/admin/store";
+import { errorMessage } from "@/lib/admin/repository";
+import { allocateNumber, clock, commit, useAdminState } from "@/lib/admin/store";
 import type { Quote, QuoteStatus } from "@/lib/admin/types";
 
 const statusOptions: [QuoteStatus, string][] = [
@@ -25,10 +26,12 @@ export function QuoteEditor({ id }: { id: string }) {
   const router = useRouter();
   const state = useAdminState();
   const [leaving, setLeaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
   if (!state || leaving) return <Loading />;
   const { data } = state;
   const quote = data.quotes.find(q => q.id === id);
-  if (!quote) return <NotOnDevice kind="quote" href="/admin/quotes" />;
+  if (!quote) return <NotFound kind="quote" href="/admin/quotes" />;
 
   const set = (change: Partial<Quote>) => commit(d => updateQuote(d, id, q => ({ ...q, ...change }), clock().now));
   const totals = documentTotals(quote);
@@ -37,31 +40,45 @@ export function QuoteEditor({ id }: { id: string }) {
   const bookings = data.bookings.filter(b => b.quoteId === id);
   const validDays = daysBetween(quote.issueDate, quote.validUntil);
 
-  const toInvoice = () => {
-    let invoiceId = "";
-    commit(
-      d => {
-        const created = createInvoice(d, clock(), id);
-        invoiceId = created.invoice.id;
-        return created.data;
-      },
-      { immediate: true },
-    );
-    router.push(`/admin/invoices/${invoiceId}`);
+  const withNumber = async (kind: "quote" | "invoice", make: (number: number) => string) => {
+    setBusy(true);
+    setActionError("");
+    try {
+      const target = make(await allocateNumber(kind));
+      if (target) router.push(target);
+    } catch (error) {
+      setActionError(`Couldn't create the ${kind}. ${errorMessage(error)}`);
+    } finally {
+      setBusy(false);
+    }
   };
-  const duplicate = () => {
-    let copyId = "";
-    commit(
-      d => {
-        const copy = duplicateQuote(d, id, clock());
-        if (!copy) return d;
-        copyId = copy.quote.id;
-        return copy.data;
-      },
-      { immediate: true },
-    );
-    if (copyId) router.push(`/admin/quotes/${copyId}`);
-  };
+  const toInvoice = () =>
+    withNumber("invoice", number => {
+      let invoiceId = "";
+      commit(
+        d => {
+          const created = createInvoice(d, clock(), id, number);
+          invoiceId = created.invoice.id;
+          return created.data;
+        },
+        { immediate: true },
+      );
+      return `/admin/invoices/${invoiceId}`;
+    });
+  const duplicate = () =>
+    withNumber("quote", number => {
+      let copyId = "";
+      commit(
+        d => {
+          const copy = duplicateQuote(d, id, clock(), number);
+          if (!copy) return d;
+          copyId = copy.quote.id;
+          return copy.data;
+        },
+        { immediate: true },
+      );
+      return copyId ? `/admin/quotes/${copyId}` : "";
+    });
   const remove = () => {
     if (!window.confirm(`Delete quote ${quote.number}? This can't be undone.`)) return;
     setLeaving(true);
@@ -164,16 +181,17 @@ export function QuoteEditor({ id }: { id: string }) {
 
       <Card title="Next steps">
         <div className="adm-actions">
-          <button type="button" className="adm-btn adm-btn-ghost" onClick={toInvoice}>
+          <button type="button" className="adm-btn adm-btn-ghost" onClick={toInvoice} disabled={busy}>
             <Icon name="invoice" size={18} /> {invoices.length ? "Create another invoice" : "Create invoice from quote"}
           </button>
           <Link className="adm-btn adm-btn-ghost" href={`/admin/diary?fromQuote=${id}`}>
             <Icon name="diary" size={18} /> Book into diary
           </Link>
-          <button type="button" className="adm-btn adm-btn-ghost" onClick={duplicate}>
+          <button type="button" className="adm-btn adm-btn-ghost" onClick={duplicate} disabled={busy}>
             <Icon name="copy" size={18} /> Duplicate
           </button>
         </div>
+        {actionError && <p className="adm-inline-error">{actionError}</p>}
         {(invoices.length > 0 || bookings.length > 0) && (
           <ul className="adm-links">
             {invoices.map(inv => (
