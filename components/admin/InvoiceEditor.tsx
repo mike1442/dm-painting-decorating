@@ -6,7 +6,7 @@ import { TotalsSummary, VatControls } from "./DocumentControls";
 import { CustomerFields, DateField, LinesField, NumberField, SelectField, TextArea, TextField } from "./fields";
 import { Icon } from "./Icon";
 import { LineItemsEditor, UnitSuggestions } from "./LineItemsEditor";
-import { Card, CustomerLinkNotice, Loading, NotOnDevice, PageHead, SaveStatus, StateChip } from "./ui";
+import { Card, CustomerLinkNotice, Loading, NotFound, PageHead, SaveStatus, StateChip } from "./ui";
 import { paymentMethodLabels } from "@/components/documents/InvoiceDocument";
 import { addDays, formatShortDate } from "@/lib/admin/dates";
 import { newId } from "@/lib/admin/factories";
@@ -29,7 +29,7 @@ export function InvoiceEditor({ id }: { id: string }) {
   if (!state || leaving) return <Loading />;
   const { data } = state;
   const invoice = data.invoices.find(i => i.id === id);
-  if (!invoice) return <NotOnDevice kind="invoice" href="/admin/invoices" />;
+  if (!invoice) return <NotFound kind="invoice" href="/admin/invoices" />;
 
   const today = clock().today;
   const set = (change: Partial<Invoice>) => commit(d => updateInvoice(d, id, i => ({ ...i, ...change }), clock().now));

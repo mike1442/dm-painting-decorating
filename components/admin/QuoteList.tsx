@@ -10,7 +10,8 @@ import { documentTotals, formatPence } from "@/lib/admin/money";
 import { createQuote } from "@/lib/admin/operations";
 import type { QuoteInput } from "@/lib/admin/operations";
 import { quoteState } from "@/lib/admin/status";
-import { clock, commit, useAdminState } from "@/lib/admin/store";
+import { errorMessage } from "@/lib/admin/repository";
+import { allocateNumber, clock, commit, useAdminState } from "@/lib/admin/store";
 
 export function matchesSearch(query: string, ...fields: string[]) {
   const q = query.trim().toLowerCase();
@@ -24,6 +25,8 @@ export function QuoteList() {
   const [sheet, setSheet] = useState<"closed" | "choose" | "chatgpt">("closed");
   const [pasted, setPasted] = useState("");
   const [copied, setCopied] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
   if (!state) return <Loading />;
 
   const today = clock().today;
@@ -32,18 +35,28 @@ export function QuoteList() {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   const parsed = pasted.trim() ? parseQuoteJson(pasted, state.data.settings.defaultVatRate) : null;
 
-  const create = (input?: QuoteInput) => {
-    let quoteId = "";
-    commit(
-      d => {
-        const created = createQuote(d, clock(), input);
-        quoteId = created.quote.id;
-        return created.data;
-      },
-      { immediate: true },
-    );
-    router.push(`/admin/quotes/${quoteId}`);
+  const create = async (input?: QuoteInput) => {
+    setCreating(true);
+    setCreateError("");
+    try {
+      const number = await allocateNumber("quote");
+      let quoteId = "";
+      commit(
+        d => {
+          const created = createQuote(d, clock(), input, number);
+          quoteId = created.quote.id;
+          return created.data;
+        },
+        { immediate: true },
+      );
+      router.push(`/admin/quotes/${quoteId}`);
+    } catch (error) {
+      setCreateError(`Couldn't create the quote. ${errorMessage(error)}`);
+    } finally {
+      setCreating(false);
+    }
   };
+  const createErrorNote = createError && <p className="adm-inline-error">{createError}</p>;
   const copyInstructions = async () => {
     try {
       await navigator.clipboard.writeText(chatGptInstructions);
@@ -57,7 +70,7 @@ export function QuoteList() {
     <div className="adm-page">
       <PageHead
         title="Quotes"
-        subtitle={`${state.data.quotes.length} on this device`}
+        subtitle={`${state.data.quotes.length} saved`}
         action={
           <button type="button" className="adm-btn" onClick={() => setSheet("choose")}>
             <Icon name="plus" size={18} /> New quote
@@ -101,7 +114,7 @@ export function QuoteList() {
 
       <Sheet open={sheet === "choose"} onClose={() => setSheet("closed")} title="New quote">
         <div className="adm-choices">
-          <button type="button" className="adm-choice" onClick={() => create()}>
+          <button type="button" className="adm-choice" onClick={() => create()} disabled={creating}>
             <Icon name="quote" size={24} />
             <span>
               <strong>Blank quotation</strong>
@@ -116,6 +129,7 @@ export function QuoteList() {
             </span>
           </button>
         </div>
+        {createErrorNote}
       </Sheet>
 
       <Sheet
@@ -123,8 +137,8 @@ export function QuoteList() {
         onClose={() => setSheet("closed")}
         title="Paste from ChatGPT"
         actions={
-          <button type="button" className="adm-btn adm-btn-wide" disabled={!parsed?.ok} onClick={() => parsed?.ok && create(parsed.input)}>
-            Create draft quote
+          <button type="button" className="adm-btn adm-btn-wide" disabled={!parsed?.ok || creating} onClick={() => parsed?.ok && create(parsed.input)}>
+            {creating ? "Creating…" : "Create draft quote"}
           </button>
         }
       >
@@ -136,13 +150,14 @@ export function QuoteList() {
             </button>
           </li>
           <li>Ask ChatGPT for the quote JSON and copy its reply.</li>
-          <li>Paste the reply below. Nothing is sent anywhere; it stays on this device.</li>
+          <li>Paste the reply below. It becomes a draft quote that you can check before sending.</li>
         </ol>
         <label className="adm-field">
           <span className="adm-field-label">ChatGPT reply</span>
           <textarea className="adm-input adm-textarea adm-code" rows={8} value={pasted} onChange={e => setPasted(e.target.value)} placeholder='{ "customer": { … }, "title": "…", "works": [ … ] }' />
         </label>
         {parsed && !parsed.ok && <p className="adm-inline-error">{parsed.error}</p>}
+        {createErrorNote}
         {parsed?.ok && (
           <div className="adm-parse-ok">
             <p>

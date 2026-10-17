@@ -1,9 +1,9 @@
 import { addDays } from "./dates.ts";
 import { emptyCustomer, formatDocNumber, newId, newLineItem } from "./factories.ts";
-import type { AdminData, Booking, Customer, Invoice, IsoDate, IsoDateTime, LineItem, Quote } from "./types.ts";
+import type { AdminData, Booking, BusinessSettings, Customer, Invoice, IsoDate, IsoDateTime, LineItem, Quote } from "./types.ts";
 
-// Pure operations on the whole data set. The store applies them; tests call
-// them directly. A future backend can implement the same operations server-side.
+// Pure operations on the whole data set. The store applies them and saves the
+// records they change; tests call them directly.
 
 export type Clock = { today: IsoDate; now: IsoDateTime };
 
@@ -19,16 +19,34 @@ export type QuoteInput = Partial<
 };
 
 const copyCustomer = (c: Customer): Customer => ({ ...c, address: { ...c.address } });
+
+/**
+ * Picks the document number. `allocated` comes from the server's atomic counter;
+ * without it (tests, offline tools) the local setting is used. Either way the
+ * local setting only ever moves forward.
+ */
+function takeNumber(settings: BusinessSettings, kind: "quote" | "invoice", allocated?: number) {
+  const key = kind === "quote" ? "nextQuoteNumber" : "nextInvoiceNumber";
+  const prefix = kind === "quote" ? settings.quotePrefix : settings.invoicePrefix;
+  const n = allocated ?? settings[key];
+  return { number: formatDocNumber(prefix, n), settings: { ...settings, [key]: Math.max(settings[key], n + 1) } };
+}
 const copyLines = (items: Omit<LineItem, "id">[]): LineItem[] =>
   items.map(({ description, quantity, unit, unitPrice }) => newLineItem({ description, quantity, unit, unitPrice }));
 
-export function createQuote(data: AdminData, clock: Clock, input: QuoteInput = {}): { data: AdminData; quote: Quote } {
+export function createQuote(
+  data: AdminData,
+  clock: Clock,
+  input: QuoteInput = {},
+  allocated?: number,
+): { data: AdminData; quote: Quote } {
   const { settings } = data;
+  const numbered = takeNumber(settings, "quote", allocated);
   const issueDate = input.issueDate ?? clock.today;
   const quote: Quote = {
     kind: "quote",
     id: newId(),
-    number: formatDocNumber(settings.quotePrefix, settings.nextQuoteNumber),
+    number: numbered.number,
     status: "draft",
     title: input.title ?? "",
     customer: input.customer ? copyCustomer(input.customer) : emptyCustomer(),
@@ -53,7 +71,7 @@ export function createQuote(data: AdminData, clock: Clock, input: QuoteInput = {
     data: {
       ...data,
       quotes: [quote, ...data.quotes],
-      settings: { ...settings, nextQuoteNumber: settings.nextQuoteNumber + 1 },
+      settings: numbered.settings,
     },
   };
 }
@@ -62,7 +80,12 @@ export function updateQuote(data: AdminData, id: string, change: (quote: Quote) 
   return { ...data, quotes: data.quotes.map(q => (q.id === id ? { ...change(q), updatedAt: now } : q)) };
 }
 
-export function duplicateQuote(data: AdminData, id: string, clock: Clock): { data: AdminData; quote: Quote } | null {
+export function duplicateQuote(
+  data: AdminData,
+  id: string,
+  clock: Clock,
+  allocated?: number,
+): { data: AdminData; quote: Quote } | null {
   const source = data.quotes.find(q => q.id === id);
   if (!source) return null;
   return createQuote(data, clock, {
@@ -77,7 +100,7 @@ export function duplicateQuote(data: AdminData, id: string, clock: Clock): { dat
     deposit: source.deposit,
     terms: source.terms,
     internalNotes: source.internalNotes,
-  });
+  }, allocated);
 }
 
 export function deleteQuote(data: AdminData, id: string): AdminData {
@@ -90,13 +113,19 @@ export function deleteQuote(data: AdminData, id: string): AdminData {
 }
 
 /** Creates an invoice, copying everything from the quote when one is given. */
-export function createInvoice(data: AdminData, clock: Clock, fromQuoteId?: string): { data: AdminData; invoice: Invoice } {
+export function createInvoice(
+  data: AdminData,
+  clock: Clock,
+  fromQuoteId?: string,
+  allocated?: number,
+): { data: AdminData; invoice: Invoice } {
   const { settings } = data;
+  const numbered = takeNumber(settings, "invoice", allocated);
   const quote = fromQuoteId ? data.quotes.find(q => q.id === fromQuoteId) : undefined;
   const invoice: Invoice = {
     kind: "invoice",
     id: newId(),
-    number: formatDocNumber(settings.invoicePrefix, settings.nextInvoiceNumber),
+    number: numbered.number,
     status: "draft",
     title: quote?.title ?? "",
     customer: quote ? copyCustomer(quote.customer) : emptyCustomer(),
@@ -130,7 +159,7 @@ export function createInvoice(data: AdminData, clock: Clock, fromQuoteId?: strin
       ...data,
       quotes,
       invoices: [invoice, ...data.invoices],
-      settings: { ...settings, nextInvoiceNumber: settings.nextInvoiceNumber + 1 },
+      settings: numbered.settings,
     },
   };
 }

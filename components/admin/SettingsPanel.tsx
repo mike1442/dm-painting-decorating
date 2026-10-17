@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import { signOutOfAdmin, useAdminUser } from "./account";
 import { BackupPanel } from "./BackupPanel";
 import { AddressFields, LinesField, NumberField, TextArea, TextField, Toggle } from "./fields";
 import { Card, Loading, PageHead, SaveStatus } from "./ui";
@@ -8,6 +10,7 @@ import type { BusinessSettings } from "@/lib/admin/types";
 
 export function SettingsPanel() {
   const state = useAdminState();
+  const user = useAdminUser();
   if (!state) return <Loading />;
   const s = state.data.settings;
   const set = (change: Partial<BusinessSettings>) => commit(d => ({ ...d, settings: { ...d.settings, ...change } }));
@@ -16,6 +19,20 @@ export function SettingsPanel() {
   return (
     <div className="adm-page adm-editor">
       <PageHead title="Settings" subtitle={<SaveStatus persistence={state.persistence} />} />
+
+      <Card title="Account">
+        <p className="adm-muted">
+          Signed in as <strong className="adm-account-email">{user?.email}</strong>
+        </p>
+        <div className="adm-actions">
+          <Link className="adm-btn adm-btn-ghost" href="/admin/password">
+            Change password
+          </Link>
+          <button type="button" className="adm-btn adm-btn-ghost" onClick={() => void signOutOfAdmin()}>
+            Sign out
+          </button>
+        </div>
+      </Card>
 
       <BackupPanel data={state.data} />
 
@@ -76,7 +93,10 @@ export function SettingsPanel() {
           <TextField label="Invoice prefix" value={s.invoicePrefix} onChange={invoicePrefix => set({ invoicePrefix })} />
           <NumberField label="Next invoice number" value={s.nextInvoiceNumber} onChange={n => set({ nextInvoiceNumber: whole(n, 1, 999999) })} hint={`Next: ${formatDocNumber(s.invoicePrefix, s.nextInvoiceNumber)}`} />
         </div>
-        <p className="adm-muted adm-small">Continue from your existing paperwork. Numbers only count up on this device.</p>
+        <p className="adm-muted adm-small">
+          Continue from your existing paperwork. Numbers are handed out by the server, so every device gets the next unused
+          one and they never go backwards.
+        </p>
       </Card>
     </div>
   );

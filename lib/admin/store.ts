@@ -1,20 +1,19 @@
 "use client";
 import { useSyncExternalStore } from "react";
-import { todayIso } from "./dates.ts";
-import { emptyData } from "./factories.ts";
-import { normaliseAdminData } from "./normalise.ts";
-import type { Clock } from "./operations.ts";
-import type { AdminData } from "./types.ts";
+import { todayIso } from "./dates";
+import type { Clock } from "./operations";
+import { SupabaseAdminRepository } from "./supabase-repository";
+import { SyncEngine } from "./sync";
+import type { Persistence, SyncSnapshot } from "./sync";
+import type { AdminData } from "./types";
+import { browserSupabase } from "@/lib/supabase/client";
 
-// TEMPORARY STORAGE. Records live only in this browser's localStorage on this
-// device: they are not synchronised, not backed up and can be cleared by the
-// browser. Replace this module with a backend-backed store (e.g. Supabase)
-// that implements the same operations from operations.ts.
+// The admin's data, held in memory and saved to Supabase by the sync engine.
+// Components read it with useAdminState() and change it with commit(); edits are
+// saved shortly after they stop, retried when the connection returns, and
+// refreshed from other devices when this page regains focus.
 
-export const STORAGE_KEY = "dm-admin:v1";
-const SAVE_DELAY_MS = 250;
-
-export type Persistence = "saved" | "saving" | "unavailable" | "failed";
+export type { Persistence };
 
 export type AdminState = {
   data: AdminData;
@@ -22,9 +21,32 @@ export type AdminState = {
   message: string;
 };
 
+const SAVE_DELAY_MS = 700;
+const REFRESH_INTERVAL_MS = 45_000;
+const FOCUS_REFRESH_GAP_MS = 5_000;
+
+const idle: SyncSnapshot = {
+  phase: "loading",
+  data: null,
+  persistence: "saved",
+  message: "",
+  conflicts: [],
+  pending: 0,
+  loadError: "",
+  lastSavedAt: null,
+  settingsSaved: false,
+};
+
+let engine: SyncEngine | null = null;
+let ownerId: string | null = null;
+let snapshot: SyncSnapshot = idle;
 let state: AdminState | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-let listening = false;
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let retryDelay = 2_000;
+let lastRefresh = 0;
+let detach: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
 export function clock(): Clock {
@@ -32,124 +54,176 @@ export function clock(): Clock {
   return { today: todayIso(now), now: now.toISOString() };
 }
 
-function load(): AdminState {
-  const now = new Date().toISOString();
-  let raw: string | null;
-  try {
-    raw = window.localStorage.getItem(STORAGE_KEY);
-  } catch {
-    return {
-      data: emptyData(now),
-      persistence: "unavailable",
-      message: "This browser is blocking storage, so nothing you enter can be kept. Check private browsing or cookie settings.",
-    };
-  }
-  if (!raw) return { data: emptyData(now), persistence: "saved", message: "" };
-  try {
-    return { data: normaliseAdminData(JSON.parse(raw), now), persistence: "saved", message: "" };
-  } catch {
-    try {
-      window.localStorage.setItem(`${STORAGE_KEY}:unreadable:${now}`, raw);
-    } catch {}
-    return {
-      data: emptyData(now),
-      persistence: "saved",
-      message: "Saved records on this device could not be read. A copy was kept; restore from a backup if you have one.",
-    };
-  }
-}
-
 function emit() {
   listeners.forEach(listener => listener());
 }
 
-function getState(): AdminState {
-  if (!state) state = load();
-  return state;
-}
-
-/** Writes pending changes now. Called automatically after edits and when the page is hidden. */
-export function flush() {
-  if (saveTimer) {
-    clearTimeout(saveTimer);
-    saveTimer = null;
-  }
-  const current = getState();
-  if (current.persistence !== "saving") return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current.data));
-    state = { ...current, persistence: "saved", message: "" };
-  } catch {
-    state = {
-      ...current,
-      persistence: "failed",
-      message: "Couldn't save on this device. Browser storage may be full or blocked. Export a backup now.",
-    };
+function onEngineChange() {
+  if (!engine) return;
+  snapshot = engine.getSnapshot();
+  const { data, persistence, message } = snapshot;
+  if (snapshot.phase !== "ready" || !data) state = null;
+  else if (!state || state.data !== data || state.persistence !== persistence || state.message !== message) {
+    state = { data, persistence, message };
   }
   emit();
 }
 
-function startListening() {
-  if (listening) return;
-  listening = true;
-  window.addEventListener("pagehide", flush);
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") flush();
-  });
-  window.addEventListener("storage", event => {
-    // Another tab saved: reload unless this tab has unsaved edits of its own.
-    if (event.key !== STORAGE_KEY || saveTimer) return;
-    state = load();
+function clearTimer(timer: ReturnType<typeof setTimeout> | null) {
+  if (timer) clearTimeout(timer);
+}
+
+function save(delay = SAVE_DELAY_MS) {
+  clearTimer(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    const current = engine;
+    void current?.flush().then(() => afterSave(current));
+  }, delay);
+}
+
+function afterSave(current: SyncEngine) {
+  if (current !== engine) return;
+  clearTimer(retryTimer);
+  retryTimer = null;
+  if (current.getSnapshot().persistence === "offline") {
+    retryTimer = setTimeout(() => save(0), retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 60_000);
+  } else {
+    retryDelay = 2_000;
+  }
+}
+
+function refresh(force = false) {
+  if (!engine || engine.getSnapshot().phase !== "ready") return;
+  const now = Date.now();
+  if (!force && now - lastRefresh < FOCUS_REFRESH_GAP_MS) return;
+  lastRefresh = now;
+  void engine.refresh();
+  if (engine.hasUnsaved()) save(0);
+}
+
+function attachBrowserEvents() {
+  const onVisible = () => {
+    if (document.visibilityState === "visible") refresh();
+    else if (engine?.hasUnsaved()) save(0);
+  };
+  const onOnline = () => {
+    retryDelay = 2_000;
+    save(0);
+    refresh(true);
+  };
+  const onFocus = () => refresh();
+  const onBeforeUnload = (event: BeforeUnloadEvent) => {
+    if (!engine?.hasUnsaved()) return;
+    save(0);
+    event.preventDefault();
+    event.returnValue = "";
+  };
+  document.addEventListener("visibilitychange", onVisible);
+  window.addEventListener("online", onOnline);
+  window.addEventListener("focus", onFocus);
+  window.addEventListener("beforeunload", onBeforeUnload);
+  pollTimer = setInterval(() => {
+    if (document.visibilityState === "visible") refresh(true);
+  }, REFRESH_INTERVAL_MS);
+  return () => {
+    document.removeEventListener("visibilitychange", onVisible);
+    window.removeEventListener("online", onOnline);
+    window.removeEventListener("focus", onFocus);
+    window.removeEventListener("beforeunload", onBeforeUnload);
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = null;
+  };
+}
+
+/** Starts loading the signed-in member's records. Safe to call repeatedly. */
+export function startAdminStore(user: { id: string }) {
+  if (engine && ownerId === user.id) return;
+  stopAdminStore();
+  const supabase = browserSupabase();
+  if (!supabase) {
+    snapshot = { ...idle, phase: "error", loadError: "The admin isn't connected to its database. Check the Supabase settings." };
     emit();
+    return;
+  }
+  ownerId = user.id;
+  engine = new SyncEngine(new SupabaseAdminRepository(supabase, user.id), {
+    now: () => new Date().toISOString(),
+    onChange: onEngineChange,
   });
+  detach = attachBrowserEvents();
+  lastRefresh = Date.now();
+  onEngineChange();
+  void engine.load();
+}
+
+/** Forgets everything in memory, e.g. when signing out. */
+export function stopAdminStore() {
+  clearTimer(saveTimer);
+  clearTimer(retryTimer);
+  saveTimer = retryTimer = null;
+  detach?.();
+  detach = null;
+  engine = null;
+  ownerId = null;
+  state = null;
+  snapshot = idle;
+  emit();
+}
+
+/** Applies a change; it is saved to the server shortly afterwards. */
+export function commit(change: (data: AdminData) => AdminData, { immediate = false } = {}) {
+  if (engine?.apply(change)) save(immediate ? 0 : SAVE_DELAY_MS);
+}
+
+/** Reserves the next quote or invoice number on the server. Throws when it can't. */
+export async function allocateNumber(kind: "quote" | "invoice", min?: number): Promise<number> {
+  if (!engine) throw new Error("The admin hasn't finished loading.");
+  return engine.allocateNumber(kind, min);
+}
+
+export function resolveConflict(key: string, choice: "mine" | "theirs") {
+  engine?.resolveConflict(key, choice);
+  save(0);
+}
+
+export function retrySaving() {
+  engine?.retryBlocked();
+  retryDelay = 2_000;
+  save(0);
+}
+
+export function reloadAdminData() {
+  void engine?.load();
+}
+
+/** Saves anything pending now and resolves once the server has answered. */
+export async function saveNow(): Promise<boolean> {
+  clearTimer(saveTimer);
+  saveTimer = null;
+  if (!engine) return true;
+  await engine.flush();
+  return !engine.hasUnsaved();
+}
+
+export function hasUnsavedChanges(): boolean {
+  return engine?.hasUnsaved() ?? false;
 }
 
 function subscribe(listener: () => void) {
-  startListening();
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
   };
 }
 
-/** Applies a change to the data set and saves it to this device shortly after. */
-export function commit(change: (data: AdminData) => AdminData, { immediate = false } = {}) {
-  const current = getState();
-  const data = change(current.data);
-  if (data === current.data) return;
-  if (current.persistence === "unavailable") {
-    state = { ...current, data };
-    emit();
-    return;
-  }
-  state = { ...current, data, persistence: "saving" };
-  emit();
-  if (saveTimer) clearTimeout(saveTimer);
-  if (immediate) flush();
-  else saveTimer = setTimeout(flush, SAVE_DELAY_MS);
-}
-
-/** Removes every admin record from this device. */
-export function eraseDevice() {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = null;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {}
-  state = load();
-  emit();
-}
-
-/** Approximate size of the saved records, in bytes. */
-export function storedBytes(): number {
-  try {
-    return (window.localStorage.getItem(STORAGE_KEY) ?? "").length * 2;
-  } catch {
-    return 0;
-  }
-}
-
-/** Current state, or null while rendering on the server. */
+/** The loaded records, or null while loading (and on the server). */
 export function useAdminState(): AdminState | null {
-  return useSyncExternalStore(subscribe, getState, () => null);
+  return useSyncExternalStore(subscribe, () => state, () => null);
+}
+
+/** Loading, saving, conflict and error details for the app shell. */
+export function useSyncStatus(): SyncSnapshot {
+  return useSyncExternalStore(subscribe, () => snapshot, () => idle);
 }
