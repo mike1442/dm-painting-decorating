@@ -64,6 +64,7 @@ language sql stable security definer set search_path = '' as $function$
     join auth.sessions s on s.user_id = u.id and s.id::text = (auth.jwt()->>'session_id')
     where m.user_id = auth.uid() and lower(u.email) = 'mike@dmpaintingdecorating.co.uk'
       and u.email_confirmed_at is not null and (u.banned_until is null or u.banned_until <= now())
+      and u.deleted_at is null and (s.not_after is null or s.not_after > now())
   );
 $function$;
 
@@ -242,7 +243,8 @@ begin
   join public.admin_settings b on b.owner_id=d.owner_id
   join public.admin_members m on m.user_id=d.owner_id join auth.users u on u.id=m.user_id
   where s.token_hash=encode(sha256(convert_to(p_token,'UTF8')),'hex') and s.revoked_at is null
-    and d.kind in ('quote','invoice') and lower(u.email)='mike@dmpaintingdecorating.co.uk' and u.email_confirmed_at is not null;
+    and d.kind in ('quote','invoice') and lower(u.email)='mike@dmpaintingdecorating.co.uk' and u.email_confirmed_at is not null and u.deleted_at is null
+    and (u.banned_until is null or u.banned_until <= now());
   if v_doc is null then return null; end if;
   -- Positive allowlists mean newly added internal fields cannot leak later.
   v_keys := array['kind','number','status','title','issueDate','scope','works','materials','materialsNote','vat','isTest'];

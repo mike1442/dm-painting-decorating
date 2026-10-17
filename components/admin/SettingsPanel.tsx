@@ -1,12 +1,17 @@
 "use client";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { BackupPanel } from "./BackupPanel";
 import { AddressFields, LinesField, NumberField, TextArea, TextField, Toggle } from "./fields";
 import { Card, Loading, PageHead, SaveStatus } from "./ui";
 import { formatDocNumber } from "@/lib/admin/factories";
-import { commit, useAdminState } from "@/lib/admin/store";
+import { billGatesTestInvoice } from "@/lib/admin/fixtures";
+import { clock, commit, flush, useAdminState } from "@/lib/admin/store";
 import type { BusinessSettings } from "@/lib/admin/types";
 
 export function SettingsPanel() {
+  const router = useRouter();
+  const [creatingTest, setCreatingTest] = useState(false);
   const state = useAdminState();
   if (!state) return <Loading />;
   const s = state.data.settings;
@@ -18,6 +23,18 @@ export function SettingsPanel() {
       <PageHead title="Settings" subtitle={<SaveStatus persistence={state.persistence} />} />
 
       <BackupPanel data={state.data} />
+
+      <Card title="Test invoice">
+        <p className="adm-muted adm-small">Bill Gates: two painters, three days each at £250 per day, plus £180 materials. £1,680 before optional VAT. Clearly marked as a test; no payment is due.</p>
+        <button type="button" className="adm-btn adm-btn-ghost" disabled={creatingTest} onClick={async () => {
+          setCreatingTest(true);
+          const existing = state.data.invoices.find(invoice => invoice.isTest && invoice.customer.name === "Bill Gates" && invoice.title === "Painting a 20m² wall");
+          const invoice = existing ?? billGatesTestInvoice(clock());
+          if (!existing) commit(data => ({ ...data, invoices: [invoice, ...data.invoices] }), { immediate: true });
+          if (await flush()) router.push(`/admin/invoices/${invoice.id}`);
+          setCreatingTest(false);
+        }}>{creatingTest ? "Saving test…" : "Open or create test invoice"}</button>
+      </Card>
 
       <Card title="Business details">
         <p className="adm-muted adm-small">Printed on every quotation and invoice.</p>
