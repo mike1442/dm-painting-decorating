@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app/admin app/login app/d app/api/admin app/api/auth app/api/contact components/admin components/documents components/ContactForm.tsx lib middleware.ts playwright.config.ts playwright.live.config.ts tests",
+    "lint": "eslint app/admin app/login app/d app/api/admin app/api/auth app/api/contact app/api/mcp app/api/oauth app/api/chatgpt app/oauth app/.well-known components/admin components/documents components/ContactForm.tsx lib middleware.ts playwright.config.ts playwright.live.config.ts tests",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none \"tests/**/*.test.ts\"",
     "test:e2e": "playwright test",
@@ -28,6 +28,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.3.7",
+    "@modelcontextprotocol/sdk": "1.31.0",
     "@playwright/test": "1.64.1",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",

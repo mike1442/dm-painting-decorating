@@ -11,6 +11,8 @@ export type Clock = { today: IsoDate; now: IsoDateTime };
 export type QuoteInput = Partial<
   Pick<Quote, "title" | "intro" | "scope" | "materialsNote" | "terms" | "vat" | "deposit" | "issueDate" | "internalNotes">
 > & {
+  /** Callers that must not create duplicates on retry supply a stable ID. */
+  id?: string;
   isTest?: boolean;
   customer?: Customer;
   works?: Omit<LineItem, "id">[];
@@ -26,7 +28,7 @@ const copyLines = (items: Omit<LineItem, "id">[]): LineItem[] =>
 export function createQuote(data: AdminData, clock: Clock, input: QuoteInput = {}): { data: AdminData; quote: Quote } {
   const { settings } = data;
   const issueDate = input.issueDate ?? clock.today;
-  const id = newId();
+  const id = input.id ?? newId();
   const isTest = input.isTest === true;
   const quote: Quote = {
     kind: "quote",
@@ -94,12 +96,20 @@ export function deleteQuote(data: AdminData, id: string): AdminData {
   };
 }
 
-/** Creates an invoice, copying everything from the quote when one is given. */
-export function createInvoice(data: AdminData, clock: Clock, fromQuoteId?: string): { data: AdminData; invoice: Invoice } {
+/**
+ * Creates an invoice, copying everything from the quote when one is given. A
+ * quote's test marker carries over; otherwise `isTest` marks a test invoice.
+ */
+export function createInvoice(
+  data: AdminData,
+  clock: Clock,
+  fromQuoteId?: string,
+  options: { id?: string; isTest?: boolean } = {},
+): { data: AdminData; invoice: Invoice } {
   const { settings } = data;
   const quote = fromQuoteId ? data.quotes.find(q => q.id === fromQuoteId) : undefined;
-  const id = newId();
-  const isTest = quote?.isTest === true;
+  const id = options.id ?? newId();
+  const isTest = quote ? quote.isTest === true : options.isTest === true;
   const invoice: Invoice = {
     kind: "invoice",
     id,

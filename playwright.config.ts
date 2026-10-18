@@ -1,6 +1,10 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 
 const baseURL = process.env.E2E_BASE_URL || "http://127.0.0.1:3000";
+// The locally started server has the ChatGPT connection switched on (with a
+// throwaway secret) so its anonymous boundaries are exercised, not just "off".
+if (!process.env.E2E_BASE_URL) process.env.DM_CHATGPT_SECRET ||= randomBytes(32).toString("base64url");
 
 export default defineConfig({
   testDir: "./tests/e2e",

@@ -62,15 +62,16 @@ jobs:
 
   real-supabase:
     needs: isolated-workflow
-    # This credential is authorised only for the reviewed PR #6 branch.
+    # This credential is authorised only for reviewed branches: PR #6 and the
+    # ChatGPT connection, whose end-to-end test creates and removes a TEST quote.
     # Other PRs and manual refs must never run live writes automatically.
     if: >-
       (github.event_name == 'pull_request' &&
-       github.event.pull_request.number == 6 &&
-       github.event.pull_request.head.ref == 'fix/production-admin' &&
-       github.event.pull_request.head.repo.full_name == github.repository) ||
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       ((github.event.pull_request.number == 6 && github.event.pull_request.head.ref == 'fix/production-admin') ||
+        github.event.pull_request.head.ref == 'claude/dm-painting-chatgpt-integration-8jb5pd')) ||
       (github.event_name == 'workflow_dispatch' &&
-       github.ref == 'refs/heads/fix/production-admin')
+       (github.ref == 'refs/heads/fix/production-admin' || github.ref == 'refs/heads/claude/dm-painting-chatgpt-integration-8jb5pd'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
