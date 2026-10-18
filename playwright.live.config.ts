@@ -12,12 +12,17 @@ export default defineConfig({
   forbidOnly: true,
   retries: 0,
   workers: 1,
-  timeout: 240_000,
-  expect: { timeout: 20_000 },
+  // Each step is a focused test. Bounded actions fail within seconds with the
+  // page state instead of exhausting a long test budget; sessions and TEST
+  // records are cleaned up by worker fixtures with their own time budget.
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   reporter: [["list"]],
   outputDir: "test-results/live",
   use: {
     baseURL,
+    actionTimeout: 15_000,
+    navigationTimeout: 30_000,
     // Traces can capture passwords, session cookies, and private customer URLs.
     trace: "off",
     screenshot: "off",

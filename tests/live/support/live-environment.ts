@@ -1,4 +1,4 @@
-import type { APIRequestContext, APIResponse, BrowserContext, Page } from "@playwright/test";
+import { expect, type APIRequestContext, type APIResponse, type BrowserContext, type Page } from "@playwright/test";
 
 const approvedPreview = "https://dm-painting-decorating-git-fix-production-admin-mike-b7b4.vercel.app";
 
@@ -63,4 +63,15 @@ export async function liveApi(request: APIRequestContext, origin: string, path: 
 export async function privateNavigate(page: Page, path: string) {
   try { return await page.goto(path); }
   catch { throw new Error("The selected page could not be loaded. Confirm preview access and application availability."); }
+}
+
+/**
+ * Leave an admin page only once its edits are saved. The admin deliberately
+ * blocks unloading while a save is pending, which would cancel the navigation.
+ */
+export async function adminNavigate(page: Page, path: string) {
+  if (page.url().startsWith("http") && new URL(page.url()).pathname.startsWith("/admin")) {
+    await expect(page.getByRole("link", { name: "Saved to cloud", exact: true }), "Edits must reach cloud storage before leaving the page").toBeVisible();
+  }
+  return privateNavigate(page, path);
 }

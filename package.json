@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none \"tests/**/*.test.ts\"",
     "test:e2e": "playwright test",
-    "test:e2e:live": "playwright test --config playwright.live.config.ts"
+    "test:e2e:live": "playwright test --config playwright.live.config.ts",
+    "test:e2e:isolated": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/isolated/run.mjs"
   },
   "engines": {
     "node": "24.x"
@@ -28,11 +29,12 @@
   "devDependencies": {
     "@eslint/eslintrc": "3.3.7",
     "@playwright/test": "1.64.1",
-    "eslint": "9.39.5",
-    "eslint-config-next": "15.5.28",
-    "typescript": "5.9.3",
     "@types/node": "^22.0.0",
     "@types/react": "^19.0.0",
-    "@types/react-dom": "^19.0.0"
+    "@types/react-dom": "^19.0.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "15.5.28",
+    "pg": "8.23.0",
+    "typescript": "5.9.3"
   }
 }

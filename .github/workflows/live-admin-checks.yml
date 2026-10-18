@@ -8,13 +8,60 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # All live runs share the same existing database and must run serially.
-  group: live-admin-fdctgtncawolrapwwevm
-  cancel-in-progress: false
-
 jobs:
+  isolated-workflow:
+    # The complete desktop/mobile admin suite against a disposable PostgreSQL
+    # database running the real migrations behind an emulated Supabase gateway.
+    # It needs no secret and never reaches the hosted project, so every change is
+    # proven here before any live run. See tests/isolated/README.md.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: isolated-workflow-${{ github.ref }}
+      cancel-in-progress: true
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: dm_isolated
+          POSTGRES_USER: postgres
+          # Disposable CI-only password for this isolated service container.
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dm_isolated"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      ISOLATED_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/postgres
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Ensure PostgreSQL client is available
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-client
+          fi
+      - name: Route the application's pinned Supabase hostname to the local emulator
+        run: echo "127.0.0.1 fdctgtncawolrapwwevm.supabase.co" | sudo tee -a /etc/hosts
+      - name: Install locked dependencies
+        run: npm ci --no-fund
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Build and verify the complete admin workflow on desktop and mobile
+        run: npm run test:e2e:isolated
+      # Isolated fixtures only; nothing is uploaded.
+
   real-supabase:
+    needs: isolated-workflow
     # This credential is authorised only for the reviewed PR #6 branch.
     # Other PRs and manual refs must never run live writes automatically.
     if: >-
@@ -26,6 +73,10 @@ jobs:
        github.ref == 'refs/heads/fix/production-admin')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      # All live runs share the same existing database and must run serially.
+      group: live-admin-fdctgtncawolrapwwevm
+      cancel-in-progress: false
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       NEXT_PUBLIC_SUPABASE_URL: https://fdctgtncawolrapwwevm.supabase.co
@@ -73,6 +124,9 @@ jobs:
         github.ref == 'refs/heads/fix/production-admin'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: live-admin-fdctgtncawolrapwwevm
+      cancel-in-progress: false
     permissions:
       contents: read
       statuses: read

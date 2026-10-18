@@ -171,15 +171,15 @@ async function previewPerimeter(token) {
   }
 }
 
-function runProject(project, token, timeoutMs) {
+function runProject(project, token, deadline) {
   // Do not pass the GitHub API, OIDC-issuance, runtime, cache or artifact tokens
   // into the browser process. Only the application password and fresh OIDC
   // credential are needed; neither is placed in command arguments or files.
   const allowed = new Set(["PATH", "HOME", "TMPDIR", "LANG", "LC_ALL", "TZ", "CI", "GITHUB_ACTIONS", "TERM", "FORCE_COLOR", "PLAYWRIGHT_BROWSERS_PATH", "NODE_EXTRA_CA_CERTS", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "http_proxy", "https_proxy", "all_proxy", "no_proxy"]);
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) => allowed.has(name)));
-  Object.assign(env, { CI: "true", E2E_RUN_LIVE: "1", E2E_BASE_URL: previewOrigin, E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD, E2E_VERCEL_TRUSTED_OIDC_TOKEN: token });
+  Object.assign(env, { CI: "true", E2E_RUN_LIVE: "1", E2E_BASE_URL: previewOrigin, E2E_ADMIN_PASSWORD: process.env.E2E_ADMIN_PASSWORD, E2E_VERCEL_TRUSTED_OIDC_TOKEN: token, E2E_LIVE_DEADLINE: String(deadline) });
   return new Promise(resolve => {
-    const child = spawn(process.execPath, [join(root, "node_modules/@playwright/test/cli.js"), "test", "--config", join(root, "playwright.live.config.ts"), "--project", project, "--timeout", String(timeoutMs)], { cwd: root, env, stdio: "inherit" });
+    const child = spawn(process.execPath, [join(root, "node_modules/@playwright/test/cli.js"), "test", "--config", join(root, "playwright.live.config.ts"), "--project", project], { cwd: root, env, stdio: "inherit" });
     child.once("error", () => resolve(false));
     child.once("close", code => resolve(code === 0));
   });
@@ -192,12 +192,13 @@ async function main() {
     await deploymentReady(config, 0);
     const identity = await freshOidc(config);
     await previewPerimeter(identity.token);
-    // Keep at least 90 seconds after the browser's test deadline for its own
-    // record/session cleanup. A slow perimeter check cannot spend that budget.
-    const timeoutMs = Math.min(180_000, Math.floor(identity.expiresAt - Date.now() - 90_000));
-    if (timeoutMs < 120_000) stop("BLOCKED: The fresh preview identity has insufficient lifetime for a browser project and its cleanup. No administrator sign-in was attempted.");
+    // Keep at least 90 seconds after the last step may start for the worker's
+    // record/session cleanup. Steps that could outlive the identity are not
+    // started (see the deadline fixture); a global timeout would skip cleanup.
+    const deadline = Math.floor(identity.expiresAt - 90_000);
+    if (deadline - Date.now() < 120_000) stop("BLOCKED: The fresh preview identity has insufficient lifetime for a browser project and its cleanup. No administrator sign-in was attempted.");
     console.log(`Verified reviewed deployment and protected-page access; starting ${project}.`);
-    const passed = await runProject(project, identity.token, timeoutMs);
+    const passed = await runProject(project, identity.token, deadline);
     await deploymentReady(config, 0);
     if (!passed) stop(`FAIL: ${project} did not pass the real protected-preview workflow. Review the private failure summary before retrying.`);
   }
