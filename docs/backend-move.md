@@ -18,3 +18,18 @@ The user chose the existing `mike1442's Project` as the D&M backend after confir
 7. Confirm actual enquiry/photo delivery with the configured sender, then complete the release gate in `docs/production-admin.md`. Production configuration and deployment stay unchanged until verification passes. PR #6 remains draft until the complete workflow is verified.
 
 The original project is retained throughout. There is no automatic cleanup that deletes its schema, records or account. A source backup or a source file is not a substitute for verifying the destination and real application flow.
+
+## Installation checkpoint — 18 October 2026
+
+Both PostgreSQL 17 CI scenarios passed at commit `1a1b240d01dc777b7096558b640c92cd291e04ae` before destination application. The immediately preceding source recheck found zero documents, settings, sequences, memberships, private number reservations, private shares and Auth users.
+
+Supabase then recorded these actual destination migrations:
+
+| Version | Name |
+| --- | --- |
+| `20261018093605` | `dm_admin_base_storage` |
+| `20261018093651` | `dm_admin_production_persistence_and_sharing` |
+
+Independent post-install checks confirmed all six application tables have RLS enabled and deny direct anonymous/authenticated CRUD. Admin RPCs and the private reader reject an unauthorised session; malformed and unknown customer tokens return no document. Security advisors reported no warnings or errors; six informational RLS-without-policy notices match the deliberate guarded-RPC access model. All application and Auth counts remained zero, so Mike's private account setup is still required.
+
+Only the `fix/production-admin` Preview configuration uses the destination URL and public key. Existing Resend variables retain their production values and now also apply to Preview. No production deployment, Supabase URL/key, or deployment-protection setting was changed. Installation is not evidence of successful login, customer access, or email delivery: those real workflow checks remain release gates. The separate anonymous HTTP workflow checks the installed destination without admin credentials or customer data.
