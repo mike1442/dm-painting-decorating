@@ -15,7 +15,7 @@ export async function middleware(request: NextRequest) {
       token = session.access_token;
       allowed = await verifyAdmin(token);
     }
-  } catch (error) { unavailable = !(error instanceof BackendError) || error.status >= 500; }
+  } catch (error) { unavailable = !(error instanceof BackendError) || error.status === 429 || error.status >= 500; }
   let response: NextResponse;
   if (allowed) {
     const headers = new Headers(request.headers);

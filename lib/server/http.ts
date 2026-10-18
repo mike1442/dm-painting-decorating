@@ -14,6 +14,7 @@ export function failure(error: unknown) {
     if (error.code === "40001") return json({ error: "Another device changed these records. Export your edits and reload before saving." }, 409);
     if (error.status === 401 || error.status === 403 || error.code === "42501") return json({ error: "Please sign in as the administrator." }, error.status === 403 ? 403 : 401);
     if (error.code === "configuration" || error.code === "project") return json({ error: error.message }, 503);
+    if (error.status === 429) return json({ error: "The service is busy. Wait a moment and retry. Your unsaved changes have been kept." }, 429);
     if (error.status < 500) return json({ error: "The records could not be saved. Check the document values and try again." }, 400);
   }
   return json({ error: "The service is temporarily unavailable. Your unsaved changes have been kept." }, 503);

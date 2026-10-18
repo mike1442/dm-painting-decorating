@@ -71,6 +71,7 @@ select test.check((public.dm_get_data()#>>'{data,quotes,0,number}') = 'Q-0042', 
 select test.check(jsonb_array_length(public.dm_get_data()#>'{data,invoices}') = 0, 'Other owner documents never enter Mike data');
 select test.expect_error('select public.dm_create_share(''foreign-invoice-1'')', 'P0002', 'Mike cannot share another owners document');
 select test.expect_error('select * from public.admin_documents', '42501', 'Even Mike uses guarded RPCs rather than direct tables');
+select set_config('dm_test.guard_snapshot', public.dm_get_data()::text, true);
 reset role;
 
 -- The enrolment trigger responds to current Auth state; old JWTs do not bypass it.
@@ -90,14 +91,40 @@ select test.check(not public.dm_admin_is_member(), 'Banned Mike account is denie
 reset role;
 update auth.users set banned_until = null where id = '11111111-1111-4111-8111-111111111111';
 update auth.users set deleted_at = now() where id = '11111111-1111-4111-8111-111111111111';
+select test.check(exists(select 1 from public.admin_members where user_id = '11111111-1111-4111-8111-111111111111'), 'Soft-deletion regression retains membership so the current Auth guard must deny access');
 set local role authenticated;
 select test.check(not public.dm_admin_is_member(), 'A soft-deleted Auth account is denied');
+select test.expect_error('select public.dm_get_data()', '42501', 'A soft-deleted account cannot replay a read RPC with its existing JWT');
+select test.expect_error(
+  format('select public.dm_save_data(%L::jsonb, 0)', current_setting('dm_test.guard_snapshot')::jsonb->'data'),
+  '42501', 'A soft-deleted account cannot replay a valid save RPC'
+);
+select test.expect_error('select public.dm_create_share(''legacy-quote-1'')', '42501', 'A soft-deleted account cannot create customer links');
 reset role;
 update auth.users set deleted_at = null where id = '11111111-1111-4111-8111-111111111111';
+set local role authenticated;
+select test.check(public.dm_admin_is_member(), 'Restoring the Auth account restores access with the same live session');
+select test.check((public.dm_get_data()->>'revision')::bigint = 0, 'Denied soft-deleted-account saves leave the cloud revision unchanged');
+reset role;
 update auth.sessions set not_after = now() - interval '1 second' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+select test.check(exists(select 1 from auth.sessions where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'), 'Expiry regression retains the session row so presence alone cannot authorise access');
 set local role authenticated;
 select test.check(not public.dm_admin_is_member(), 'An expired Auth session is denied');
 select test.expect_error('select public.dm_get_data()', '42501', 'An expired session cannot replay an admin RPC');
+select test.expect_error(
+  format('select public.dm_save_data(%L::jsonb, 0)', current_setting('dm_test.guard_snapshot')::jsonb->'data'),
+  '42501', 'An expired session cannot replay a valid save RPC'
+);
+select test.expect_error('select public.dm_create_share(''legacy-quote-1'')', '42501', 'An expired session cannot create customer links');
+reset role;
+update auth.sessions set not_after = now() where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+set local role authenticated;
+select test.check(not public.dm_admin_is_member(), 'A session expiring exactly now is denied');
+reset role;
+update auth.sessions set not_after = now() + interval '1 hour' where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+set local role authenticated;
+select test.check(public.dm_admin_is_member(), 'An explicitly unexpired session remains authorised');
+select test.check((public.dm_get_data()->>'revision')::bigint = 0, 'Denied expired-session saves leave the cloud revision unchanged');
 reset role;
 update auth.sessions set not_after = null where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 delete from auth.sessions where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
