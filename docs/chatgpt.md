@@ -10,9 +10,9 @@ The connection is private to Mike. ChatGPT only gets access after Mike signs in 
 
 ## 1. One-time website setting
 
-Whoever manages the Vercel project does this once. Until it is done, the connection stays switched off and the ChatGPT addresses answer "not configured".
+Whoever manages the Vercel project does this once. Until it is done, ChatGPT registration, approval, token handling and MCP requests presenting credentials answer "not configured". The public OAuth discovery documents and anonymous MCP authentication challenge remain available so ChatGPT can discover the settings automatically.
 
-1. Generate a long random value, for example with `openssl rand -base64 48`, or a 64-character password from a password manager.
+1. Generate a long random value with `openssl rand -base64 48`, or a 64-character password from a password manager. The value must contain at least 32 characters and at least 10 distinct characters; a repeated character or a placeholder is rejected. Keep the generated value private and enter it directly in Vercel; never put it in chat, logs or GitHub.
 2. In Vercel → project `dm-painting-decorating` → Settings → Environment Variables, add `DM_CHATGPT_SECRET` with that value for **Production**. Mark it **Sensitive**.
 3. Redeploy production, for example by merging this change.
 
@@ -144,6 +144,7 @@ Production authentication is unchanged: `/login`, cookies, middleware, the datab
 
 ## Verification
 
+- `node scripts/verify-oauth-discovery.mjs` checks the current production HTTP responses without signing in or reading customer records. Set `BASE_URL` to check another deployment. It requires the anonymous MCP POST challenge, public metadata, same-origin OAuth endpoints, advertised S256/public-client/authorization-code support, stateless registration (HTTP 201), and the PKCE consent form (HTTP 200). A GET with `Accept: text/event-stream` may return the same HTTP 401 challenge or HTTP 405 with `Allow: POST` when no SSE stream is offered, as permitted by the [MCP Streamable HTTP specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports#listening-for-messages-from-the-server). The PR's route tests additionally require its new GET discovery challenge.
 - `npm test` includes `tests/chatgpt/`:
   - OAuth: discovery, the registration allowlist, consent, PKCE, client secrets, single-use codes, refresh, revocation, and token binding and tampering.
   - MCP: protocol behaviour.
@@ -161,7 +162,9 @@ The automated suite cannot sign in to Mike's real ChatGPT account. After deploym
 
 ## Troubleshooting
 
-- **"The ChatGPT connection is not configured"**: `DM_CHATGPT_SECRET` is missing or too short in Vercel Production, or production was not redeployed after adding it.
+- **"The ChatGPT connection is not configured"**: this generic response catches both secret-configuration and key-derivation errors; it does not by itself prove the secret is missing or invalid. `DM_CHATGPT_SECRET` needs at least 32 characters and at least 10 distinct characters. Check that the variable belongs to the project serving the domain, is enabled for Production, and that the domain points to a deployment created after the change. Verify only its presence and validation result; never print its value. A fresh discovery probe that completes public registration with HTTP 201 and PKCE consent with HTTP 200 proves that the serving deployment can read, validate and use its runtime secret to seal and verify OAuth state. An older failed workflow records the deployment's earlier state; rerun the production check after redeploying before changing the setting again.
+- **"Couldn't discover OAuth settings"**: the public addresses `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/api/mcp` must each return HTTP 200 JSON on `https://www.dmpaintingdecorating.co.uk`. The authorization-server issuer must be `https://www.dmpaintingdecorating.co.uk`, matching the protected-resource document's `authorization_servers`. `/api/mcp` answers an anonymous POST with HTTP 401 and a `WWW-Authenticate` header pointing to its resource metadata, even when its runtime secret is missing or invalid. The updated route also returns this challenge for GET; a deployment without SSE support may instead return HTTP 405 with `Allow: POST`. If metadata returns HTTP 503, investigate that response before interpreting absent PKCE or grant fields. A 503 from registration, approval, token handling or an MCP request presenting credentials requires checking runtime configuration and key derivation.
 - **ChatGPT says it cannot connect or keeps asking to sign in**: use the exact address `https://www.dmpaintingdecorating.co.uk/api/mcp` (with `www`). If you pressed Disconnect in Settings or the secret changed, reconnect the app in ChatGPT.
 - **"That password was not accepted"**: use the D&M admin password (the one for `/login`), not the ChatGPT password.
 - **A customer link stopped working**: a newer link replaced it, or access was revoked. Ask ChatGPT for a new link.
+

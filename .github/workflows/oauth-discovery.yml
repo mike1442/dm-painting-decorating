@@ -1,0 +1,61 @@
+name: OAuth discovery
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oauth-discovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  built-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - run: npm ci --no-fund
+      - run: npm run build
+      - name: Verify production build discovery through PKCE consent
+        run: |
+          export DM_CHATGPT_SECRET="$(openssl rand -base64 48)"
+          npm start > /tmp/dm-oauth-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          node --input-type=module <<'JS'
+          for (let attempt = 0; attempt < 60; attempt++) {
+            try {
+              const response = await fetch('http://localhost:3000/.well-known/oauth-authorization-server', { signal: AbortSignal.timeout(1000) });
+              if (response.ok) process.exit(0);
+            } catch {}
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+          process.exit(1);
+          JS
+          BASE_URL=http://localhost:3000 node scripts/verify-oauth-discovery.mjs
+  production-discovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Verify actual production discovery through PKCE consent
+        # No repository secrets, login, token exchange or customer-data calls.
+        # The dynamic client registration endpoint is stateless.
+        run: node scripts/verify-oauth-discovery.mjs
