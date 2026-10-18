@@ -3,7 +3,7 @@ These are real workflow tests against the existing Supabase project `kqjbgvjgsvb
 Prerequisites:
 
 - Mike must activate and confirm his Supabase Auth account for `mike@dmpaintingdecorating.co.uk` and choose his own password privately. An absent or unconfirmed account is a blocker; this suite does not generate credentials.
-- The application must use that existing project's URL and public publishable/anon key. Never provide a service-role key.
+- The application must use that existing project's `NEXT_PUBLIC_SUPABASE_URL` and public publishable/anon key. Key selection prefers `SUPABASE_PUBLISHABLE_KEY`, then the existing Vercel integration's `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, then the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Configure one supported name. Never provide a service-role or secret key.
 - For GitHub Actions, add Mike's privately supplied password as the repository Actions secret `E2E_ADMIN_PASSWORD`. The separate live verification job checks this prerequisite before launching any browser; a missing secret is reported as blocked. Never paste it in a PR, workflow input, command line, issue or test output.
 - For a local run, inject `E2E_ADMIN_PASSWORD` through your password manager or a private shell prompt; do not put its literal value in shell history. Install the lockfile dependencies with Node 24 and install Chromium using Playwright.
 - Use a local production build connected to the existing Supabase project at exactly `http://localhost:3000`, or the exact PR #6 preview origin `https://dm-painting-decorating-git-fix-production-admin-mike-b7b4.vercel.app`. Other local ports, IPv4/IPv6 literal origins, production URLs and other Vercel projects are refused. Do not change preview or production protection settings to run these tests.

@@ -26,7 +26,7 @@ Customer access uses only `dm_get_shared_document`. Each share has a cryptograph
 
 Mike must have a confirmed Supabase Auth account at `mike@dmpaintingdecorating.co.uk`; no account or password is fabricated by this migration. The initial audit found no account for Mike. Provision or invite the user through Supabase Auth, configure the production site URL and permitted redirects, and complete email verification/password setup. Passwords and service-role keys must never be committed or put in browser configuration.
 
-Configure the application's existing Vercel project with `NEXT_PUBLIC_SUPABASE_URL=https://kqjbgvjgsvbjflumorjr.supabase.co` and its server-side `SUPABASE_PUBLISHABLE_KEY` (the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY` is accepted for compatibility). No service-role key is required. Configure the Auth provider's email delivery before relying on invitations or password recovery. Production rollout must wait for database checks, application checks, a successful build, and real authenticated functional verification.
+Configure the application's existing Vercel project with `NEXT_PUBLIC_SUPABASE_URL=https://kqjbgvjgsvbjflumorjr.supabase.co` and its public API key. Key selection prefers `SUPABASE_PUBLISHABLE_KEY`, then the existing integration's `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, then the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`. No service-role key is required or accepted. Configure the Auth provider's email delivery before relying on invitations or password recovery. Production rollout must wait for database checks, application checks, a successful build, and real authenticated functional verification.
 
 ## Applied upgrade evidence
 
