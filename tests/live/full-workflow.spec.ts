@@ -52,7 +52,7 @@ async function signIn(page: Page, password: string) {
   const response = await privateNavigate(page, "/login");
   expect(response?.status(), "The login page must be reachable before real workflow verification").toBe(200);
   await expect(page.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
-  await page.locator("label.adm-field").filter({ hasText: "Email" }).locator("input").fill(ADMIN_EMAIL);
+  await page.getByLabel("Email", { exact: true }).fill(ADMIN_EMAIL);
   // Do not use locator.fill(password): its failure call log can print the value.
   // Recordings are also disabled by the dedicated live config.
   await page.evaluate(value => {
