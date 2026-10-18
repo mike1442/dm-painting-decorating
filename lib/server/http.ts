@@ -11,7 +11,7 @@ export async function requireAdmin(request?: Request) {
 }
 export function failure(error: unknown) {
   if (error instanceof BackendError) {
-    if (error.code === "40001") return json({ error: "Another device changed these records. Export your edits and reload before saving." }, 409);
+    if (error.code === "40001" || error.code === "stale" || error.status === 409) return json({ error: "Another device changed these records. Export your edits and reload before saving." }, 409);
     if (error.status === 401 || error.status === 403 || error.code === "42501") return json({ error: "Please sign in as the administrator." }, error.status === 403 ? 403 : 401);
     if (error.code === "configuration" || error.code === "project") return json({ error: error.message }, 503);
     if (error.status === 429) return json({ error: "The service is busy. Wait a moment and retry. Your unsaved changes have been kept." }, 429);
