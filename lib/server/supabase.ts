@@ -4,11 +4,25 @@ export class BackendError extends Error {
   code: string;
   constructor(status: number, code = "", message = "The database request failed.") { super(message); this.status = status; this.code = code; }
 }
+/** The only Supabase project this application uses. */
+const PROJECT_HOST = "fdctgtncawolrapwwevm.supabase.co";
+// Publishable keys are public by design: Auth, RLS and the guarded functions
+// protect every record, never this key. Shipping it means a deployment needs
+// no Supabase variables, and stale ones (e.g. an integration for another
+// project) cannot redirect or break the admin.
+const PROJECT_PUBLISHABLE_KEY = "sb_publishable_6VBwZ_uNQJsUQ6ygEWtUWg_T_LlGL3K";
+function projectUrl() {
+  // A configured address is honoured only for this project's own host (the
+  // isolated emulator serves it on another port); any other project is ignored.
+  try {
+    const configured = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL || "");
+    if (configured.protocol === "https:" && configured.hostname === PROJECT_HOST) return configured.origin;
+  } catch {}
+  return `https://${PROJECT_HOST}`;
+}
 function configuration() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new BackendError(503, "configuration", "Supabase is not configured. Contact the administrator.");
-  if (new URL(url).hostname !== "fdctgtncawolrapwwevm.supabase.co") throw new BackendError(503, "project", "The Supabase project configuration is incorrect.");
+  const url = projectUrl();
+  const key = process.env.SUPABASE_PUBLISHABLE_KEY || PROJECT_PUBLISHABLE_KEY;
   let publicKey = key.startsWith("sb_publishable_");
   if (key.startsWith("eyJ")) {
     try { publicKey = JSON.parse(atob(key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role === "anon"; } catch { publicKey = false; }
