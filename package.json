@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint app/admin app/login app/d app/api/admin app/api/auth components/admin components/documents lib middleware.ts playwright.config.ts playwright.live.config.ts tests",
+    "lint": "eslint app/admin app/login app/d app/api/admin app/api/auth app/api/contact components/admin components/documents components/ContactForm.tsx lib middleware.ts playwright.config.ts playwright.live.config.ts tests",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none \"tests/**/*.test.ts\"",
     "test:e2e": "playwright test",

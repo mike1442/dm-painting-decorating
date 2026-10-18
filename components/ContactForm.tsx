@@ -15,7 +15,7 @@ submission.current={fingerprint,id:requestId};fd.set("requestId",requestId);send
 try{for(const photo of await prepareContactPhotos(photos))fd.append("photos",photo);
 const response=await fetch("/api/contact",{method:"POST",body:fd});
 const data=await response.json().catch(()=>({error:response.status===413?"Photos are too large to send. Please choose smaller photos or email them directly.":"Unable to send your enquiry. Please try again or email us directly."}));
-if(!response.ok)throw new Error(data.error||"Unable to send your enquiry.");
+if(!response.ok||data?.ok!==true)throw new Error(data?.error||"We couldn't confirm your enquiry was sent. Please try again or email us directly.");
 setStatus("success");setPhotos([]);submission.current=null;form.reset();
 }catch(e){setStatus("error");setError(e instanceof Error?e.message:"Something went wrong. Please email us instead.");}finally{sending.current=false;}
 }

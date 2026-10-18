@@ -8,13 +8,13 @@ export function liveEnvironment() {
     throw new Error("Live verification requires explicit E2E_RUN_LIVE=1. No real workflow was verified.");
   }
   const value = process.env.E2E_BASE_URL;
-  if (!value) throw new Error("Set E2E_BASE_URL to the approved PR #6 preview or a loopback production build using the existing Supabase project.");
+  if (!value) throw new Error("Set E2E_BASE_URL to the approved PR #6 preview or http://localhost:3000 using the existing Supabase project.");
   let url: URL;
   try { url = new URL(value); }
   catch { throw new Error("E2E_BASE_URL must be a valid, approved origin."); }
-  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname) && ["http:", "https:"].includes(url.protocol);
+  const loopback = url.origin === "http://localhost:3000";
   if ((!loopback && url.origin !== approvedPreview) || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)) {
-    throw new Error("Live writes are allowed only on the approved PR #6 preview or loopback. Production and other projects are refused.");
+    throw new Error("Live writes are allowed only on the approved PR #6 preview or http://localhost:3000. Production, other local origins and other projects are refused.");
   }
   if (!process.env.E2E_ADMIN_PASSWORD || process.env.E2E_ADMIN_PASSWORD.length < 8) {
     throw new Error("Mike must first activate his confirmed Supabase Auth account and privately provide E2E_ADMIN_PASSWORD. No password is generated and no authenticated workflow was verified.");

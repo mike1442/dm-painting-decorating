@@ -34,6 +34,7 @@ test("valid enquiry preserves actual attachment bytes and escapes customer conte
     assert.equal(body.from, config.from);
     assert.equal(body.reply_to, "test@example.com");
     assert.equal(body.attachments[0].filename, "wall_script_.png");
+    assert.equal(body.attachments[0].content_type, "image/png");
     assert.deepEqual(Buffer.from(body.attachments[0].content, "base64"), png);
     assert.match(body.html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.doesNotMatch(body.html, /<script>/);
@@ -43,6 +44,26 @@ test("valid enquiry preserves actual attachment bytes and escapes customer conte
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { ok: true });
   assert.equal(calls, 1);
+});
+
+test("untrusted HTML filenames and declared types cannot select an active attachment type", async () => {
+  const bytes = Buffer.concat([png, Buffer.from("<html><script>TEST_ONLY</script></html>")]);
+  for (const name of ["photo.html", "photo.png.html"]) {
+    const fd = form();
+    // Declared MIME and filename are both untrusted; derive the type from bytes.
+    fd.append("photos", new File([bytes], name, { type: "image/jpeg" }));
+    const captured: { filename: string; content: string; content_type: string }[] = [];
+    const response = await handleContactRequest(request(fd), { ...config, fetcher: (async (_url, init) => {
+      captured.push(JSON.parse(String(init?.body)).attachments[0]);
+      return Response.json({ id: "test-provider-id" });
+    }) as typeof fetch });
+    assert.equal(response.status, 200);
+    assert.equal(captured.length, 1);
+    const attachment = captured[0];
+    assert.equal(attachment.filename, name === "photo.html" ? "photo.png" : "photo_png.png");
+    assert.equal(attachment.content_type, "image/png");
+    assert.deepEqual(Buffer.from(attachment.content, "base64"), bytes);
+  }
 });
 
 test("contact honeypot does not send a notification", async () => {

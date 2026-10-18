@@ -18,7 +18,7 @@ Customer links must be created after a successful save. Each replacement revokes
 
 ## Verification and release gate
 
-Run `npm ci`, `npm run lint`, `npm test`, `npm run typecheck`, `npm run build` and `npm run test:e2e`. The GitHub Actions workflow repeats these checks, performs a production dependency audit and exercises anonymous boundaries in desktop and mobile Chromium. The initial dependency resolution publishes its lockfile as a workflow artifact; commit that lock before release.
+Run `npm ci`, `npm run lint`, `npm test`, `npm run typecheck`, `npm run build` and `npm run test:e2e`. The GitHub Actions workflow repeats these checks, performs a production dependency audit and exercises anonymous boundaries in desktop and mobile Chromium. Install from the committed lockfile; dependency changes must update it and pass the same checks before release.
 
 Anonymous boundary tests do not verify the authenticated product. Before merging/releasing, use the real admin account in a protected preview to verify:
 
@@ -35,8 +35,12 @@ The existing Vercel project is `prj_FAr18fyWJQrhwDHrwze92Do72Y7C` in team `mike-
 
 ## Private live verification credential
 
-The separate `Live admin verification` workflow fails with a clear blocker until Mike's confirmed account exists and the repository Actions secret `E2E_ADMIN_PASSWORD` is configured. The password must be chosen by Mike and entered privately in GitHub → mike1442/dm-painting-decorating → Settings → Secrets and variables → Actions → New repository secret. Never put its value in chat, source, workflow inputs or command arguments. The workflow exposes the credential only to its credential check and real test step, not dependency installation or build.
+The separate `Live admin verification` workflow runs only for PR #6 on `fix/production-admin`, or a manual run of that same branch, and serializes all runs against this database. It fails with a clear blocker until Mike's confirmed account exists and the repository Actions secret `E2E_ADMIN_PASSWORD` is configured. The password must be chosen by Mike and entered privately in GitHub → mike1442/dm-painting-decorating → Settings → Secrets and variables → Actions → New repository secret. Never put its value in chat, source, workflow inputs or command arguments. The workflow exposes the credential only to its credential check and real test step, not dependency installation or build. Remove the temporary test secret after verification.
 
 That workflow starts a loopback production build connected to the existing Supabase project and runs the serial desktop/mobile suite in `tests/live`. The public publishable key is not a service-role secret. No live artifacts are uploaded. A pass verifies the real Auth/database flow through the reviewed application; it does not resolve Vercel account permissions or prove Resend delivery. Run the same suite against the exact Mike PR preview after authorised preview access is available, using a short-lived origin-scoped OIDC token when needed.
 
 The actual PR preview is https://dm-painting-decorating-git-fix-production-admin-mike-b7b4.vercel.app. Vercel must be connected through an account authorised for the Mike team/project. Reconnecting app access does not require changing deployment protection.
+
+## Reconnecting the correct Vercel account
+
+In ChatGPT, open Settings → Apps → Vercel → connection settings. Reconnect using the Vercel account that can open https://vercel.com/mike-b7b4/dm-painting-decorating and grant access to that existing project. If the connection offers no reconnect option, disconnect it and connect Vercel again with that account. If Mike's team is unavailable in Vercel itself, the team's owner must grant the connecting account access. Keep Deployment Protection enabled. Authorising the older Paul-team project cannot resolve the Mike-team 403.

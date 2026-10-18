@@ -9,13 +9,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: live-admin-${{ github.ref }}
+  # All live runs share the same existing database and must run serially.
+  group: live-admin-kqjbgvjgsvbjflumorjr
   cancel-in-progress: false
 
 jobs:
   real-supabase:
-    # Fork PRs never receive the private administrator test credential.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    # This credential is authorised only for the reviewed PR #6 branch.
+    # Other PRs and manual refs must never run live writes automatically.
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.number == 6 &&
+       github.event.pull_request.head.ref == 'fix/production-admin' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/fix/production-admin')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

@@ -75,3 +75,26 @@ test("unsupported attachments are rejected before submitting", async ({ page }) 
   await expect(page.locator(".dm-contact-form-wrap").getByRole("alert")).toContainText("Please use JPG, PNG, WEBP or HEIC photos.");
   await expect(page.getByRole("button", { name: "Remove not-a-photo.txt" })).toHaveCount(0);
 });
+
+test("unconfirmed HTTP success preserves enquiry details and photos for retry", async ({ page }) => {
+  await completeEnquiry(page);
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aGm0AAAAASUVORK5CYII=", "base64");
+  await page.getByLabel("Choose project photos").setInputFiles({ name: "test-wall.png", mimeType: "image/png", buffer: png });
+  let attempts = 0;
+  await page.route("**/api/contact", async route => {
+    attempts++;
+    if (attempts === 1) await route.fulfill({ status: 200, contentType: "text/html", body: "<html>Unexpected proxy response</html>" });
+    else if (attempts === 2) await route.fulfill({ status: 200, json: { ok: false } });
+    else await route.fulfill({ status: 200, json: { ok: true } });
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.getByRole("button", { name: "Send my enquiry" }).click();
+    await expect(page.locator(".dm-contact-form-wrap").getByRole("alert")).toBeVisible();
+    await expect(page.getByRole("status")).toHaveCount(0);
+    await expect(page.getByLabel("Email address")).toHaveValue("test@example.com");
+    await expect(page.getByRole("button", { name: "Remove test-wall.png" })).toBeVisible();
+  }
+  await page.getByRole("button", { name: "Send my enquiry" }).click();
+  await expect(page.getByRole("status")).toContainText("Thanks, we've got your enquiry.");
+  expect(attempts).toBe(3);
+});

@@ -85,23 +85,21 @@ async function unavailable(page: Page, url: string) {
 
 test("real admin workflow persists across browsers and exposes only an explicitly shared test document", async ({ page, context, browser, isMobile }, testInfo) => {
   const { baseURL, password } = liveEnvironment();
-  await prepareLiveBrowser(context, baseURL);
   const owned = new Set<string>();
   const contexts: BrowserContext[] = [];
   const runId = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
   const privateMarker = `PRIVATE-NOTES-${runId}`;
   const quoteTitle = `TEST ${runId} Separate customer quotation`;
   const invoiceTitle = `TEST ${runId} Painting a 20m² wall`;
-  let authenticated = false;
   let cleanupDone = false;
   let quoteId = "";
   let invoiceId = "";
   let bookingId = "";
 
   try {
+    await prepareLiveBrowser(context, baseURL);
     await test.step("Sign in through the real UI and verify private session cookies", async () => {
       await signIn(page, password);
-      authenticated = true;
       const cookies = await context.cookies(baseURL);
       for (const name of [ACCESS_COOKIE, REFRESH_COOKIE]) {
         const cookie = cookies.find(value => value.name === name);
@@ -343,6 +341,10 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       expect((await context.cookies(baseURL)).some(cookie => [ACCESS_COOKIE, REFRESH_COOKIE].includes(cookie.name))).toBe(false);
       expect((await liveApi(context.request, baseURL, "/api/admin/data")).status()).toBe(401);
       expect((await liveApi(replay.request, baseURL, "/api/admin/data")).status(), "Replaying the logged-out access and refresh cookies must not regain admin access").toBe(401);
+      // Revocation is now established. Remove the deliberately stale credentials
+      // so teardown does not try to revoke an already invalid refresh token.
+      await replay.clearCookies({ name: ACCESS_COOKIE });
+      await replay.clearCookies({ name: REFRESH_COOKIE });
       await privateNavigate(page, "/admin/diary");
       await expect(page).toHaveURL(/\/login$/);
     });
@@ -351,8 +353,9 @@ test("real admin workflow persists across browsers and exposes only an explicitl
   } finally {
     // On a partial failure, discover only descendants identifiable by this run's
     // unique quote ID and title. Never restore an old complete-data snapshot.
+    const cleanupFailures: string[] = [];
     try {
-      if (authenticated && !cleanupDone && owned.size) {
+      if (!cleanupDone && owned.size) {
         const current = await readCloud(context, baseURL);
         for (const invoice of current.data.invoices) {
           if (quoteId && invoice.quoteId === quoteId && invoice.isTest === true && invoice.title === quoteTitle) owned.add(invoice.id);
@@ -367,14 +370,31 @@ test("real admin workflow persists across browsers and exposes only an explicitl
           bookings: current.data.bookings.filter(record => !owned.has(record.id)),
         }, owned);
       }
-    } finally {
-      // Revoke independent observer sessions as well; a browser close alone does
-      // not invalidate Supabase refresh tokens.
-      for (const other of contexts) {
-        try { await liveApi(other.request, baseURL, "/api/auth/logout", "POST"); }
-        finally { await other.close(); }
-      }
-      if (authenticated) await liveApi(context.request, baseURL, "/api/auth/logout", "POST");
+    } catch {
+      cleanupFailures.push("Temporary TEST records could not be removed. Review this run's test drafts before repeating live verification.");
     }
+
+    // Every created context is attempted even if an earlier request or close
+    // fails. Include the primary context when sign-in only partially completed:
+    // it may already hold a live session before a loading/layout assertion fails.
+    // Transport errors can contain headers, so retain only these fixed messages.
+    for (const [index, other] of [...contexts, context].entries()) {
+      try {
+        const response = await liveApi(other.request, baseURL, "/api/auth/logout", "POST");
+        const result: unknown = response.status() === 200 ? await response.json() : null;
+        if (!result || typeof result !== "object" || !("revoked" in result) || result.revoked !== true) {
+          cleanupFailures.push(`Browser ${index + 1}: server session revocation was not confirmed.`);
+        }
+      } catch {
+        cleanupFailures.push(`Browser ${index + 1}: the session revocation request failed.`);
+      }
+      try {
+        await other.close();
+      } catch {
+        cleanupFailures.push(`Browser ${index + 1}: the browser context could not be closed.`);
+      }
+    }
+    // Preserve an original workflow failure while reporting every cleanup issue.
+    expect.soft(cleanupFailures, "All test records must be removed and every browser session revoked and closed").toEqual([]);
   }
 });

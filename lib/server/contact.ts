@@ -6,11 +6,16 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] || char);
 const failure = (error: string, status: number) => Response.json({ error }, { status });
 
-function isImage(bytes: Buffer, type: string) {
-  if (type === "image/jpeg") return bytes.length >= 3 && bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]));
-  if (type === "image/png") return bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
-  if (type === "image/webp") return bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP";
-  return bytes.length >= 12 && bytes.toString("ascii", 4, 8) === "ftyp" && ["heic", "heix", "hevc", "hevx", "heim", "heis", "mif1", "msf1"].includes(bytes.toString("ascii", 8, 12));
+function imageFormat(bytes: Buffer) {
+  if (bytes.length >= 3 && bytes.subarray(0, 3).equals(Buffer.from([0xff, 0xd8, 0xff]))) return { contentType: "image/jpeg", extension: "jpg" };
+  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return { contentType: "image/png", extension: "png" };
+  if (bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") return { contentType: "image/webp", extension: "webp" };
+  if (bytes.length >= 12 && bytes.toString("ascii", 4, 8) === "ftyp") {
+    const brand = bytes.toString("ascii", 8, 12);
+    if (["heic", "heix", "hevc", "hevx", "heim", "heis"].includes(brand)) return { contentType: "image/heic", extension: "heic" };
+    if (["mif1", "msf1"].includes(brand)) return { contentType: "image/heif", extension: "heif" };
+  }
+  return null;
 }
 
 type ContactConfig = { apiKey?: string; from?: string; fetcher?: typeof fetch };
@@ -37,11 +42,14 @@ export async function handleContactRequest(req: Request, config: ContactConfig =
   if (photos.length > 6 || photos.some(f => !CONTACT_PHOTO_TYPES.includes(f.type) || !f.size) || photos.reduce((n, f) => n + f.size, 0) > MAX_CONTACT_PHOTO_BYTES) {
     return failure("Please choose up to 6 supported photos, under 4 MB in total after resizing, or email your photos directly.", 400);
   }
-  const attachments: { filename: string; content: string }[] = [];
+  const attachments: { filename: string; content: string; content_type: string }[] = [];
   for (const photo of photos) {
     const bytes = Buffer.from(await photo.arrayBuffer());
-    if (!isImage(bytes, photo.type)) return failure("A photo could not be recognised. Please use JPG, PNG, WEBP or HEIC photos.", 400);
-    attachments.push({ filename: photo.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 100) || "photo", content: bytes.toString("base64") });
+    const format = imageFormat(bytes);
+    if (!format) return failure("A photo could not be recognised. Please use JPG, PNG, WEBP or HEIC photos.", 400);
+    // Never let the untrusted filename select an active attachment type.
+    const basename = photo.name.replace(/\.[^.]*$/, "").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 90) || "photo";
+    attachments.push({ filename: `${basename}.${format.extension}`, content: bytes.toString("base64"), content_type: format.contentType });
   }
   const fields = [["Name", name], ["Email", email], ["Phone", phone], ["Area / postcode", location], ["Project type", projectType || "Not specified"], ["Description", message], ["Photos attached", String(photos.length)]];
   const text = fields.map(([label, value]) => label + ": " + value).join("\n\n");
