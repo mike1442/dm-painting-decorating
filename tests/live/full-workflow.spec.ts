@@ -236,7 +236,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
 
     await test.step("Convert the accepted test quote through the UI without creating an issued invoice", async () => {
       await privateNavigate(page, `/admin/quotes/${quoteId}`);
-      await page.getByLabel("Status", { exact: true }).selectOption("accepted");
+      await page.locator("label.adm-field").filter({ hasText: "Status" }).locator("select").selectOption("accepted");
       await waitCloud(context, baseURL, data => data.quotes.find(record => record.id === quoteId)?.status === "accepted");
       const before = await readCloud(context, baseURL);
       await page.getByRole("button", { name: "Create invoice from quote", exact: true }).click();
