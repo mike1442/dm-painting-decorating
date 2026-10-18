@@ -1,0 +1,26 @@
+name: Production OAuth discovery probe
+on:
+  push:
+    branches: [fix/chatgpt-oauth-discovery]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Probe public discovery endpoints without credentials
+        run: |
+          node --input-type=module <<'JS'
+          const origin = 'https://www.dmpaintingdecorating.co.uk';
+          const paths = ['/api/mcp', '/.well-known/oauth-authorization-server', '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/api/mcp', '/.well-known/openid-configuration'];
+          for (const path of paths) {
+            const response = await fetch(origin + path, {redirect:'manual', signal:AbortSignal.timeout(15000)});
+            const type = response.headers.get('content-type');
+            const body = type?.includes('application/json') ? await response.json() : null;
+            console.log(JSON.stringify({method:'GET', path, status:response.status, type, location:response.headers.get('location'), challenge:response.headers.get('www-authenticate'), issuer:body?.issuer, resource:body?.resource, authorization_servers:body?.authorization_servers, authorization_endpoint:body?.authorization_endpoint, token_endpoint:body?.token_endpoint, registration_endpoint:body?.registration_endpoint, error:body?.error}));
+          }
+          const response = await fetch(origin+'/api/mcp', {method:'POST', headers:{'Content-Type':'application/json', Accept:'application/json, text/event-stream'}, body:JSON.stringify({jsonrpc:'2.0',id:1,method:'initialize',params:{protocolVersion:'2025-06-18',capabilities:{},clientInfo:{name:'discovery-check',version:'1'}}}), redirect:'manual', signal:AbortSignal.timeout(15000)});
+          console.log(JSON.stringify({method:'POST',path:'/api/mcp',status:response.status,type:response.headers.get('content-type'),challenge:response.headers.get('www-authenticate')}));
+          JS
