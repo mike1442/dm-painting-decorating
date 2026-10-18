@@ -194,7 +194,7 @@ async function main() {
     // NEXT_PUBLIC_* values are compiled into the build, so it must target the emulator.
     if (process.env.ISOLATED_SKIP_BUILD !== "1" && await run("npm", ["run", "build"], { cwd: root, env }) !== 0) fail("The production build failed.");
     const code = await run(process.execPath, [join(root, "node_modules/@playwright/test/cli.js"), "test", "--config", join(root, "playwright.live.config.ts"), ...process.argv.slice(2)], { cwd: root, env });
-    console.log(`ISOLATED: Auth sign-ins ${emulator.stats.signIns}, refreshes ${emulator.stats.refreshes}, logouts ${emulator.stats.logouts}, database calls ${emulator.stats.rpcCalls}, stalled reads ${emulator.stats.stalled}.`);
+    console.log(`ISOLATED: Upstream requests ${emulator.stats.requests} (at most ${emulator.stats.peakInFlight} at once), Auth user checks ${emulator.stats.userChecks}, sign-ins ${emulator.stats.signIns}, refreshes ${emulator.stats.refreshes}, logouts ${emulator.stats.logouts}, database calls ${emulator.stats.rpcCalls}, stalled reads ${emulator.stats.stalled}.`);
     const problems = await verifyDatabase(databaseUrl, seeded);
     for (const problem of problems) console.error(`ISOLATED: FAIL ${problem}`);
     if (!problems.length) console.log("ISOLATED: Database verified: every session revoked, every automated TEST record removed, pre-existing records, settings and sequences unchanged.");

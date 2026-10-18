@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AddressFields, DateField, Segmented, SelectField, TextArea, TextField } from "./fields";

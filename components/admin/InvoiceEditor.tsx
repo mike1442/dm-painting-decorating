@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
 import { ShareControls } from "./ShareControls";
 import { useRouter } from "next/navigation";
 import { useState } from "react";

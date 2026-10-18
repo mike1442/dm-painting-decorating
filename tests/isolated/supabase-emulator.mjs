@@ -39,8 +39,9 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
   const secret = randomBytes(32);
   /** refresh token -> { sessionId, revokedAt, child } */
   const refreshTokens = new Map();
-  const stats = { signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0, stalled: 0 };
+  const stats = { requests: 0, peakInFlight: 0, userChecks: 0, signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0, stalled: 0 };
   let reads = 0;
+  let inFlight = 0;
 
   const sign = claims => {
     const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode(claims)}`;
@@ -191,6 +192,7 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
     if (path === "/auth/v1/health" && request.method === "GET") return [200, { name: "dm-isolated-supabase" }];
     if (path === "/auth/v1/token" && request.method === "POST") return token(url, body);
     if (path === "/auth/v1/user" && request.method === "GET") {
+      stats.userChecks += 1;
       const result = await authenticated(request);
       return result.failure ?? [200, userBody(result.user)];
     }
@@ -219,6 +221,8 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
     request.on("end", async () => {
       let status;
       let payload;
+      stats.requests += 1;
+      stats.peakInFlight = Math.max(stats.peakInFlight, ++inFlight);
       try {
         const url = new URL(request.url, `https://${SUPABASE_HOST}`);
         const text = Buffer.concat(chunks).toString("utf8");
@@ -231,12 +235,14 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
         const read = request.method === "GET" || /\/rpc\/(dm_admin_is_member|dm_get_data|dm_get_shared_document)$/.test(url.pathname);
         if (stallEveryRead && read && ++reads % stallEveryRead === 0) {
           stats.stalled += 1;
+          inFlight -= 1;
           return;
         }
         if (status === undefined) [status, payload] = await route(request, url, body);
       } catch {
         [status, payload] = [500, { message: "Isolated emulator failure" }];
       }
+      inFlight -= 1;
       response.writeHead(status, { [ISOLATED_MARKER]: "1", ...(payload === undefined ? {} : { "Content-Type": "application/json" }) });
       response.end(payload === undefined ? undefined : JSON.stringify(payload));
     });

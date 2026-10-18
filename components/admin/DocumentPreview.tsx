@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
 import { useEffect } from "react";
 import { Icon } from "./Icon";
 import { Loading, NotOnDevice } from "./ui";

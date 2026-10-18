@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Field } from "./fields";
