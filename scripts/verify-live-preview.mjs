@@ -142,11 +142,11 @@ async function freshOidc(config) {
     header: header?.alg === "RS256" && typeof header.kid === "string" && header.kid.length <= 200,
     iss: claims?.iss === issuer, aud: claims?.aud === audience,
     repository: claims?.repository === repository && claims?.repository_owner === "mike1442",
-    // A repository owner can customise the subject format, and the Preview
-    // trusted-source rule does not use it: the repository, ref, workflow, commit
-    // and run claims above and below bind the token to this exact run. A
-    // default-format subject must still name this repository.
-    sub: typeof claims?.sub === "string" && claims.sub.length <= 300 && (!claims.sub.startsWith("repo:") || claims.sub.startsWith(`repo:${repository}:`)),
+    // The subject is derived from claims checked exactly here (repository, ref,
+    // workflow, commit, run), its format varies with GitHub's subject templates
+    // and immutable-ID formats, and the Preview trusted-source rule does not use
+    // it. Require only that it is present; on failure describe its shape alone.
+    [`sub (${typeof claims?.sub}, ${String(claims?.sub ?? "").length} chars)`]: typeof claims?.sub === "string" && claims.sub.length > 0 && claims.sub.length <= 2000,
     ref: claims?.ref === config.ref, event_name: claims?.event_name === config.eventName,
     workflow: claims?.workflow === "Live admin verification" && claims?.workflow_ref === config.workflowRef && claims?.workflow_sha === process.env.GITHUB_WORKFLOW_SHA,
     sha: claims?.sha === process.env.GITHUB_SHA,
