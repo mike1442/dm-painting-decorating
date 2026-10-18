@@ -160,7 +160,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await expect(observerPage.getByLabel("Job title", { exact: true })).toHaveValue(quoteTitle);
       // Fail promptly with the visible page state instead of exhausting the
       // entire test budget and starving the mandatory cleanup of test records.
-      const introduction = observerPage.getByLabel("Introduction", { exact: true });
+      const introduction = observerPage.locator("label.adm-field").filter({ hasText: "Introduction" }).locator("textarea");
       try {
         await expect(introduction, "The second browser must show an editable quote; check cloud load and session state").toBeVisible({ timeout: 15_000 });
       } catch (error) {
