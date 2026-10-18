@@ -174,7 +174,7 @@ async function main() {
       ...process.env,
       NEXT_TELEMETRY_DISABLED: "1",
       NEXT_PUBLIC_SUPABASE_URL: supabaseUrl,
-      SUPABASE_PUBLISHABLE_KEY: publishableKey,
+      DM_SUPABASE_PUBLISHABLE_KEY: publishableKey,
       NODE_EXTRA_CA_CERTS: tls.bundle,
       E2E_RUN_LIVE: "1",
       E2E_BASE_URL: "http://localhost:3000",

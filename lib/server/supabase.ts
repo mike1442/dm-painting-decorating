@@ -22,7 +22,7 @@ function projectUrl() {
 }
 function configuration() {
   const url = projectUrl();
-  const key = process.env.SUPABASE_PUBLISHABLE_KEY || PROJECT_PUBLISHABLE_KEY;
+  const key = process.env.DM_SUPABASE_PUBLISHABLE_KEY || PROJECT_PUBLISHABLE_KEY;
   let publicKey = key.startsWith("sb_publishable_");
   if (key.startsWith("eyJ")) {
     try { publicKey = JSON.parse(atob(key.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).role === "anon"; } catch { publicKey = false; }

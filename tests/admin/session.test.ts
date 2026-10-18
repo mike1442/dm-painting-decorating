@@ -4,14 +4,14 @@ import { revokeCurrentSession } from "../../lib/server/session.ts";
 
 test("logout revokes an expired-access session using its private refresh token", async context => {
   const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const oldKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const oldKey = process.env.DM_SUPABASE_PUBLISHABLE_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://fdctgtncawolrapwwevm.supabase.co";
-  process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_unit_test";
+  process.env.DM_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_unit_test";
   context.after(() => {
     if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
-    if (oldKey === undefined) delete process.env.SUPABASE_PUBLISHABLE_KEY;
-    else process.env.SUPABASE_PUBLISHABLE_KEY = oldKey;
+    if (oldKey === undefined) delete process.env.DM_SUPABASE_PUBLISHABLE_KEY;
+    else process.env.DM_SUPABASE_PUBLISHABLE_KEY = oldKey;
   });
   const calls: string[] = [];
   let mode: "normal" | "expired" | "expired-403" | "session-gone" | "invalid-refresh" | "outage" = "normal";

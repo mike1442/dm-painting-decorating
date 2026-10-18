@@ -23,14 +23,14 @@ test("real middleware preserves sessions on upstream rate limits and fails close
   const { failure } = await import("../../lib/server/http.ts");
 
   const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const oldKey = process.env.SUPABASE_PUBLISHABLE_KEY;
+  const oldKey = process.env.DM_SUPABASE_PUBLISHABLE_KEY;
   process.env.NEXT_PUBLIC_SUPABASE_URL = "https://fdctgtncawolrapwwevm.supabase.co";
-  process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_unit_test";
+  process.env.DM_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_unit_test";
   context.after(() => {
     if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     else process.env.NEXT_PUBLIC_SUPABASE_URL = oldUrl;
-    if (oldKey === undefined) delete process.env.SUPABASE_PUBLISHABLE_KEY;
-    else process.env.SUPABASE_PUBLISHABLE_KEY = oldKey;
+    if (oldKey === undefined) delete process.env.DM_SUPABASE_PUBLISHABLE_KEY;
+    else process.env.DM_SUPABASE_PUBLISHABLE_KEY = oldKey;
   });
 
   type Mode = "user-rate-limit" | "member-rate-limit" | "refresh-rate-limit" | "invalid" | "expired" | "outage" | "allowed";

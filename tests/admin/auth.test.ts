@@ -16,7 +16,7 @@ assert.equal(sameOrigin(new Request(url)), false);
 assert.equal(sameOrigin(new Request(url, { headers: { origin: new URL(url).origin, "sec-fetch-site": "cross-site" } })), false);
 
 process.env.NEXT_PUBLIC_SUPABASE_URL = "https://fdctgtncawolrapwwevm.supabase.co";
-process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
+process.env.DM_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
 const originalFetch = globalThis.fetch;
 let calls = 0;
 let user = { email: "other@example.com", email_confirmed_at: "2026-10-17" };
@@ -38,6 +38,6 @@ try {
   assert.equal(await verifyAdmin("user-session"), false, "The email alone does not confer membership");
   membership = true;
   assert.equal(await verifyAdmin("user-session"), true);
-  process.env.SUPABASE_PUBLISHABLE_KEY = "sb_secret_rejected";
+  process.env.DM_SUPABASE_PUBLISHABLE_KEY = "sb_secret_rejected";
   await assert.rejects(publicRpc("anything", {}), (e: unknown) => e instanceof BackendError && e.status === 503);
 } finally { globalThis.fetch = originalFetch; }
