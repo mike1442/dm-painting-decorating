@@ -136,14 +136,18 @@ async function freshOidc(config) {
     claims = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8"));
   } catch { stop("BLOCKED: The GitHub OIDC credential could not be validated."); }
   const now = Math.floor(Date.now() / 1000);
-  const subject = config.eventName === "pull_request" ? `repo:${repository}:pull_request` : `repo:${repository}:ref:${config.ref}`;
   const times = [claims?.exp, claims?.iat, claims?.nbf].every(Number.isSafeInteger);
   // Report only which named checks failed (plus the lifetime), never claim values.
   const claimProblems = Object.entries({
     header: header?.alg === "RS256" && typeof header.kid === "string" && header.kid.length <= 200,
     iss: claims?.iss === issuer, aud: claims?.aud === audience,
     repository: claims?.repository === repository && claims?.repository_owner === "mike1442",
-    sub: claims?.sub === subject, ref: claims?.ref === config.ref, event_name: claims?.event_name === config.eventName,
+    // A repository owner can customise the subject format, and the Preview
+    // trusted-source rule does not use it: the repository, ref, workflow, commit
+    // and run claims above and below bind the token to this exact run. A
+    // default-format subject must still name this repository.
+    sub: typeof claims?.sub === "string" && claims.sub.length <= 300 && (!claims.sub.startsWith("repo:") || claims.sub.startsWith(`repo:${repository}:`)),
+    ref: claims?.ref === config.ref, event_name: claims?.event_name === config.eventName,
     workflow: claims?.workflow === "Live admin verification" && claims?.workflow_ref === config.workflowRef && claims?.workflow_sha === process.env.GITHUB_WORKFLOW_SHA,
     sha: claims?.sha === process.env.GITHUB_SHA,
     run: String(claims?.run_id) === process.env.GITHUB_RUN_ID && String(claims?.run_attempt) === process.env.GITHUB_RUN_ATTEMPT,
