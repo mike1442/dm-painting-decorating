@@ -215,8 +215,8 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await expect(dialog.getByRole("heading", { name: "New booking", exact: true })).toBeVisible();
       await expect(dialog.getByLabel("Customer", { exact: true })).toHaveValue("Bill Gates");
       await dialog.locator("label.adm-field").filter({ hasText: "Job description" }).locator("input, textarea").fill(`TEST ${runId} Wall painting booking`);
-      await dialog.getByLabel("Linked quote", { exact: true }).selectOption(quoteId);
-      const date = await dialog.getByLabel("First day", { exact: true }).inputValue();
+      await dialog.locator("label.adm-field").filter({ hasText: "Linked quote" }).locator("select").selectOption(quoteId);
+      const date = await dialog.locator("label.adm-field").filter({ hasText: "First day" }).locator("input").inputValue();
       await layoutFits(page);
       await dialog.getByRole("button", { name: "Add to diary", exact: true }).click();
       await waitCloud(context, baseURL, data => data.bookings.some(record => record.job === `TEST ${runId} Wall painting booking` && record.invoiceId === invoiceId && record.quoteId === quoteId));
