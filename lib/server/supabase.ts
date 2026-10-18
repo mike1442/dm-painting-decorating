@@ -24,7 +24,8 @@ export async function supabaseRequest(path: string, { token, method = "GET", bod
     ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
   });
   const result = await response.json().catch(() => null);
-  if (!response.ok) throw new BackendError(response.status, String(result?.code || result?.error_code || ""));
+  // Auth errors carry a numeric HTTP `code` and the reason in `error_code`; database errors carry the SQLSTATE in `code`.
+  if (!response.ok) throw new BackendError(response.status, String(typeof result?.error_code === "string" ? result.error_code : result?.code ?? ""));
   return result;
 }
 export async function publicRpc(name: string, body: Record<string, unknown>) {

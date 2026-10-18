@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ACCESS_COOKIE, REFRESH_COOKIE, adminSecurityHeaders } from "@/lib/admin/auth";
+import { ACCESS_COOKIE, REFRESH_COOKIE, accessCookieMaxAge, adminSecurityHeaders } from "@/lib/admin/auth";
 import { BackendError, refreshSession, verifyAdmin, type AuthSession } from "@/lib/server/supabase";
 export async function middleware(request: NextRequest) {
   let token = request.cookies.get(ACCESS_COOKIE)?.value ?? "";
@@ -7,8 +7,10 @@ export async function middleware(request: NextRequest) {
   let allowed = false;
   let unavailable = false;
   try {
+    // Supabase Auth reports an expired or invalid access JWT as 401 or 403
+    // (bad_jwt/session_not_found); either way the refresh token decides.
     try { allowed = await verifyAdmin(token); } catch (error) {
-      if (!(error instanceof BackendError) || error.status !== 401) throw error;
+      if (!(error instanceof BackendError) || (error.status !== 401 && error.status !== 403)) throw error;
     }
     if (!allowed && request.cookies.get(REFRESH_COOKIE)?.value) {
       session = await refreshSession(request.cookies.get(REFRESH_COOKIE)!.value);
@@ -27,7 +29,7 @@ export async function middleware(request: NextRequest) {
     response = NextResponse.next({ request: { headers } });
     if (session) {
       const options = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/" };
-      response.cookies.set(ACCESS_COOKIE, token, { ...options, maxAge: session.expires_in });
+      response.cookies.set(ACCESS_COOKIE, token, { ...options, maxAge: accessCookieMaxAge(session.expires_in) });
       response.cookies.set(REFRESH_COOKIE, session.refresh_token, { ...options, maxAge: 60 * 60 * 24 * 30 });
     }
   } else if (unavailable) {

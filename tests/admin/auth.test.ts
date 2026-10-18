@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
-import { sameOrigin } from "../../lib/admin/auth.ts";
+import { accessCookieMaxAge, sameOrigin } from "../../lib/admin/auth.ts";
 import { BackendError, verifyAdmin, publicRpc } from "../../lib/server/supabase.ts";
+
+// The access cookie must expire before its JWT, so the browser refreshes instead of presenting an expired token.
+assert.equal(accessCookieMaxAge(3600), 3540);
+assert.equal(accessCookieMaxAge(30), 60);
+assert.equal(accessCookieMaxAge(Number.NaN), 3540);
 
 const url = "https://dm-painting-decorating.vercel.app/api/admin/data";
 assert.equal(sameOrigin(new Request(url, { headers: { origin: new URL(url).origin } })), true);

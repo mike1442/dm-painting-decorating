@@ -1,16 +1,23 @@
-import { ADMIN_EMAIL, ACCESS_COOKIE, REFRESH_COOKIE, sameOrigin } from "@/lib/admin/auth";
+import { ADMIN_EMAIL, ACCESS_COOKIE, REFRESH_COOKIE, accessCookieMaxAge, sameOrigin } from "@/lib/admin/auth";
 import { BackendError, supabaseRequest, verifyAdmin, type AuthSession } from "@/lib/server/supabase";
 import { failure, json, readBody } from "@/lib/server/http";
+import { revokeCurrentSession } from "@/lib/server/session";
 export async function POST(request: Request) {
   try {
     if (!sameOrigin(request)) return json({ error: "Invalid request origin." }, 403);
     const body = await readBody(request, 4000);
     if (typeof body?.email !== "string" || body.email.trim().toLowerCase() !== ADMIN_EMAIL || typeof body.password !== "string" || body.password.length < 8 || body.password.length > 200) return json({ error: "Check your email and password." }, 400);
     const session: AuthSession = await supabaseRequest("/auth/v1/token?grant_type=password", { method: "POST", body: { email: ADMIN_EMAIL, password: body.password } });
-    if (!await verifyAdmin(session.access_token)) return json({ error: "This account is not authorised as the administrator." }, 403);
+    let authorised = false;
+    try { authorised = await verifyAdmin(session.access_token); }
+    finally {
+      // A session that will not be handed to the browser must not stay live in Supabase.
+      if (!authorised) await revokeCurrentSession(session.access_token, session.refresh_token);
+    }
+    if (!authorised) return json({ error: "This account is not authorised as the administrator." }, 403);
     const response = json({ ok: true });
     const options = { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "lax" as const, path: "/" };
-    response.cookies.set(ACCESS_COOKIE, session.access_token, { ...options, maxAge: session.expires_in });
+    response.cookies.set(ACCESS_COOKIE, session.access_token, { ...options, maxAge: accessCookieMaxAge(session.expires_in) });
     response.cookies.set(REFRESH_COOKIE, session.refresh_token, { ...options, maxAge: 60 * 60 * 24 * 30 });
     return response;
   } catch (error) {

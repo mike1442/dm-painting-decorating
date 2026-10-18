@@ -33,18 +33,23 @@ test("real middleware preserves sessions on upstream rate limits and fails close
     else process.env.SUPABASE_PUBLISHABLE_KEY = oldKey;
   });
 
-  type Mode = "user-rate-limit" | "member-rate-limit" | "refresh-rate-limit" | "invalid" | "outage" | "allowed";
+  type Mode = "user-rate-limit" | "member-rate-limit" | "refresh-rate-limit" | "invalid" | "expired" | "outage" | "allowed";
   let mode: Mode = "allowed";
   const calls: string[] = [];
-  context.mock.method(globalThis, "fetch", async (input: unknown) => {
+  context.mock.method(globalThis, "fetch", async (input: unknown, init?: RequestInit) => {
     const path = new URL(String(input)).pathname;
     calls.push(path);
     if (path.endsWith("/user")) {
       if (mode === "user-rate-limit") return Response.json({}, { status: 429 });
       if (mode === "outage") return Response.json({}, { status: 503 });
       if (mode === "invalid" || mode === "refresh-rate-limit") return Response.json({}, { status: 401 });
+      // Hosted Supabase Auth reports an expired access JWT as 403 bad_jwt.
+      if (mode === "expired" && new Headers(init?.headers).get("authorization") === "Bearer access-fixture") {
+        return Response.json({ code: 403, error_code: "bad_jwt", msg: "invalid JWT: token is expired" }, { status: 403 });
+      }
       return Response.json({ email: "mike@dmpaintingdecorating.co.uk", email_confirmed_at: "2026-10-18" });
     }
+    if (path.endsWith("/token") && mode === "expired") return Response.json({ access_token: "fresh-access-fixture", refresh_token: "rotated-refresh-fixture", expires_in: 3600 });
     if (path.endsWith("/token")) return Response.json({}, { status: mode === "refresh-rate-limit" ? 429 : 400 });
     return mode === "member-rate-limit" ? Response.json({}, { status: 429 }) : Response.json(true);
   });
@@ -83,6 +88,15 @@ test("real middleware preserves sessions on upstream rate limits and fails close
     assert.equal(response.status, path.startsWith("/api/") ? 401 : 307);
     assert.deepEqual(response.headers.getSetCookie(), ["dm-access=; Max-Age=0", "dm-refresh=; Max-Age=0"], "Invalid sessions must still be cleared");
     assert.equal(response.headers.get("x-middleware-next"), null);
+  }
+
+  mode = "expired";
+  for (const path of ["/api/admin/data", "/admin/quotes"]) {
+    calls.length = 0;
+    const response = await middleware(request(path));
+    assert.equal(response.headers.get("x-middleware-next"), "1", "An expired access JWT must be refreshed instead of signing the admin out");
+    assert.deepEqual(response.headers.getSetCookie(), ["dm-access=fresh-access-fixture", "dm-refresh=rotated-refresh-fixture"], "The rotated session must replace both cookies");
+    assert.deepEqual(calls, ["/auth/v1/user", "/auth/v1/token", "/auth/v1/user", "/rest/v1/rpc/dm_admin_is_member"]);
   }
 
   mode = "outage";

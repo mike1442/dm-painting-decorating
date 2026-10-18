@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AddressFields, DateField, Segmented, SelectField, TextArea, TextField } from "./fields";
 import { Icon } from "./Icon";
 import { Loading, PageHead, Sheet } from "./ui";
@@ -22,7 +22,7 @@ import {
 } from "@/lib/admin/dates";
 import { newBooking } from "@/lib/admin/factories";
 import { bookingFieldsFromQuote, bookingsOn, deleteBooking, saveBooking } from "@/lib/admin/operations";
-import { clock, commit, useAdminState } from "@/lib/admin/store";
+import { clock, commit, getAdminData, useAdminState } from "@/lib/admin/store";
 import type { AdminData, Booking, BookingStatus } from "@/lib/admin/types";
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -130,11 +130,17 @@ export function Diary() {
   const [view, setView] = useState<"month" | "week">("month");
   const [selected, setSelected] = useState<string | null>(null);
   const [editing, setEditing] = useState<Booking | null>(null);
+  const ready = !!state;
+  const consumedQuery = useRef<string | null>(null);
 
   // Links from quotes, invoices and booking chips: ?fromQuote=, ?fromInvoice=, ?date=
+  // Each URL is applied once. Saves, background refreshes and focus events must
+  // not reset the calendar or replace a booking that is being filled in.
   useEffect(() => {
-    if (!state) return;
-    const data = state.data;
+    const data = getAdminData();
+    const query = params.toString();
+    if (!ready || !data || consumedQuery.current === query) return;
+    consumedQuery.current = query;
     const { today, now } = clock();
     const date = params.get("date");
     const quote = data.quotes.find(q => q.id === params.get("fromQuote"));
@@ -153,9 +159,9 @@ export function Diary() {
         }),
       );
     }
-    if (quote || invoice) router.replace(isIsoDate(date) ? `/admin/diary?date=${date}` : "/admin/diary", { scroll: false });
     // Once consumed, linked-document parameters are removed from the URL.
-  }, [state, params, router]);
+    if (quote || invoice) router.replace(isIsoDate(date) ? `/admin/diary?date=${date}` : "/admin/diary", { scroll: false });
+  }, [ready, params, router]);
 
   if (!state) return <Loading />;
   const { data } = state;
