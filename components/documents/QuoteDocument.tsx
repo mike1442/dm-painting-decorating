@@ -1,10 +1,11 @@
-import { BusinessFooter, DocHeader, Intro, ItemsTable, Meta, Paper, Party, ScopeList, Terms, Totals } from "./parts";
+import { BusinessFooter, DocHeader, Intro, ItemsTable, Meta, Paper, Party, ScopeList, Terms, TestDocumentNotice, Totals } from "./parts";
 import type { TotalRow } from "./parts";
 import { formatLongDate } from "@/lib/admin/dates";
 import { depositPence, documentTotals } from "@/lib/admin/money";
 import type { BusinessSettings, Quote } from "@/lib/admin/types";
 
 export function QuoteDocument({ quote, business }: { quote: Quote; business: BusinessSettings }) {
+  const isTest = "isTest" in quote && quote.isTest === true;
   const totals = documentTotals(quote);
   const deposit = depositPence(totals.totalPence, quote.deposit);
   const hasMaterials = totals.materialsPence !== 0 || quote.materials.some(m => m.description.trim());
@@ -26,6 +27,7 @@ export function QuoteDocument({ quote, business }: { quote: Quote; business: Bus
   return (
     <Paper label={`Quotation ${quote.number}`}>
       <DocHeader kind="Quotation" number={quote.number} />
+      {isTest && <TestDocumentNotice />}
       <div className="dmdoc-parties">
         <Party heading="Prepared for" customer={quote.customer} />
         <Meta
@@ -50,15 +52,16 @@ export function QuoteDocument({ quote, business }: { quote: Quote; business: Bus
         <p className="dmdoc-note dmdoc-note-solo">{quote.materialsNote.trim()}</p>
       )}
       <Totals rows={rows} />
-      <div className="dmdoc-accept">
+      {!isTest && <div className="dmdoc-accept">
         <p className="dmdoc-label">Accepting this quotation</p>
         <p>
           To go ahead, simply get in touch to confirm and we will arrange a start date that suits you.
           {deposit > 0 && " Your booking is secured once the deposit shown above has been received."}
         </p>
-      </div>
+      </div>}
       <Terms title="Terms" terms={quote.terms} />
       <BusinessFooter business={business} />
     </Paper>
   );
 }
+

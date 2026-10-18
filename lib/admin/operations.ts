@@ -1,5 +1,5 @@
 import { addDays } from "./dates.ts";
-import { emptyCustomer, formatDocNumber, newId, newLineItem } from "./factories.ts";
+import { emptyBank, emptyCustomer, formatDocNumber, newId, newLineItem } from "./factories.ts";
 import type { AdminData, Booking, Customer, Invoice, IsoDate, IsoDateTime, LineItem, Quote } from "./types.ts";
 
 // Pure operations on the whole data set. The store applies them; tests call
@@ -11,6 +11,7 @@ export type Clock = { today: IsoDate; now: IsoDateTime };
 export type QuoteInput = Partial<
   Pick<Quote, "title" | "intro" | "scope" | "materialsNote" | "terms" | "vat" | "deposit" | "issueDate" | "internalNotes">
 > & {
+  isTest?: boolean;
   customer?: Customer;
   works?: Omit<LineItem, "id">[];
   materials?: Omit<LineItem, "id">[];
@@ -25,10 +26,13 @@ const copyLines = (items: Omit<LineItem, "id">[]): LineItem[] =>
 export function createQuote(data: AdminData, clock: Clock, input: QuoteInput = {}): { data: AdminData; quote: Quote } {
   const { settings } = data;
   const issueDate = input.issueDate ?? clock.today;
+  const id = newId();
+  const isTest = input.isTest === true;
   const quote: Quote = {
     kind: "quote",
-    id: newId(),
-    number: formatDocNumber(settings.quotePrefix, settings.nextQuoteNumber),
+    id,
+    number: isTest ? `TEST-${id.replace(/-/g, "")}` : formatDocNumber(settings.quotePrefix, settings.nextQuoteNumber),
+    ...(isTest ? { isTest: true } : {}),
     status: "draft",
     title: input.title ?? "",
     customer: input.customer ? copyCustomer(input.customer) : emptyCustomer(),
@@ -53,7 +57,7 @@ export function createQuote(data: AdminData, clock: Clock, input: QuoteInput = {
     data: {
       ...data,
       quotes: [quote, ...data.quotes],
-      settings: { ...settings, nextQuoteNumber: settings.nextQuoteNumber + 1 },
+      settings: { ...settings, nextQuoteNumber: settings.nextQuoteNumber + (isTest ? 0 : 1) },
     },
   };
 }
@@ -66,6 +70,7 @@ export function duplicateQuote(data: AdminData, id: string, clock: Clock): { dat
   const source = data.quotes.find(q => q.id === id);
   if (!source) return null;
   return createQuote(data, clock, {
+    ...(source.isTest === true ? { isTest: true } : {}),
     title: source.title,
     customer: source.customer,
     intro: source.intro,
@@ -93,10 +98,13 @@ export function deleteQuote(data: AdminData, id: string): AdminData {
 export function createInvoice(data: AdminData, clock: Clock, fromQuoteId?: string): { data: AdminData; invoice: Invoice } {
   const { settings } = data;
   const quote = fromQuoteId ? data.quotes.find(q => q.id === fromQuoteId) : undefined;
+  const id = newId();
+  const isTest = quote?.isTest === true;
   const invoice: Invoice = {
     kind: "invoice",
-    id: newId(),
-    number: formatDocNumber(settings.invoicePrefix, settings.nextInvoiceNumber),
+    id,
+    number: isTest ? `TEST-${id.replace(/-/g, "")}` : formatDocNumber(settings.invoicePrefix, settings.nextInvoiceNumber),
+    ...(isTest ? { isTest: true } : {}),
     status: "draft",
     title: quote?.title ?? "",
     customer: quote ? copyCustomer(quote.customer) : emptyCustomer(),
@@ -110,9 +118,9 @@ export function createInvoice(data: AdminData, clock: Clock, fromQuoteId?: strin
     materialsNote: quote?.materialsNote ?? "",
     vat: quote ? { ...quote.vat } : { enabled: settings.vatRegistered, rate: settings.defaultVatRate },
     payments: [],
-    bank: { ...settings.bank },
-    paymentNote: settings.defaultPaymentNote,
-    internalNotes: "",
+    bank: isTest ? emptyBank() : { ...settings.bank },
+    paymentNote: isTest ? "" : settings.defaultPaymentNote,
+    internalNotes: isTest ? "Test example only. Not issued to a customer. No payment is due." : "",
     share: { token: null, status: "not-available" },
     createdAt: clock.now,
     updatedAt: clock.now,
@@ -130,7 +138,7 @@ export function createInvoice(data: AdminData, clock: Clock, fromQuoteId?: strin
       ...data,
       quotes,
       invoices: [invoice, ...data.invoices],
-      settings: { ...settings, nextInvoiceNumber: settings.nextInvoiceNumber + 1 },
+      settings: { ...settings, nextInvoiceNumber: settings.nextInvoiceNumber + (isTest ? 0 : 1) },
     },
   };
 }

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import RoomDesigner from "../../components/RoomDesigner";
 export const metadata={title:"Virtual Room Colour Designer | D&M Painting & Decorating",description:"Upload a room photo and explore wall colour ideas with D&M Painting & Decorating."};
-export default function Page(){return <main className="dm-designer-page"><a href="/">← Back to D&M</a><p className="dm-designer-eyebrow">D&M PAINTING & DECORATING</p><h1>Virtual room colour designer</h1><p>Try a new look before you decorate. Upload a photo, brush over the walls and experiment with colour.</p><RoomDesigner/></main>}
+export default function Page(){return <main className="dm-designer-page"><Link href="/">← Back to D&M</Link><p className="dm-designer-eyebrow">D&M PAINTING & DECORATING</p><h1>Virtual room colour designer</h1><p>Try a new look before you decorate. Upload a photo, brush over the walls and experiment with colour.</p><RoomDesigner/></main>}

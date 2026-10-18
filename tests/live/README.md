@@ -1,0 +1,48 @@
+These are real workflow tests against the user-selected existing Supabase destination `fdctgtncawolrapwwevm`. The original source `kqjbgvjgsvbjflumorjr` is retained during the explicitly authorised move; these tests must not write to it. They do not mock sign-in or persistence. They are outside the anonymous suite's test directory and cannot run through `npm run test:e2e`.
+
+Prerequisites:
+
+- Mike must activate and confirm his Supabase Auth account for `mike@dmpaintingdecorating.co.uk` and choose his own password privately. An absent or unconfirmed account is a blocker; this suite does not generate credentials.
+- The application always uses that existing project and its public publishable key (`lib/server/supabase.ts`). Never provide a service-role or secret key.
+- For GitHub Actions, add Mike's privately supplied password as the repository Actions secret `E2E_ADMIN_PASSWORD`. The separate live verification job checks this prerequisite before launching any browser; a missing secret is reported as blocked. Never paste it in a PR, workflow input, command line, issue or test output.
+- For a local run, inject `E2E_ADMIN_PASSWORD` through your password manager or a private shell prompt; do not put its literal value in shell history. Install the lockfile dependencies with Node 24 and install Chromium using Playwright.
+- Use a local production build connected to the existing Supabase project at exactly `http://localhost:3000`. Deployments (production or preview), other local ports, IPv4/IPv6 literal origins and other projects are refused. Do not change Vercel protection settings to run these tests.
+
+The Actions workflow first executes `scripts/verify-supabase-login.mjs`, using the same private password and public project key directly with Auth. It prints only fixed stage/status/allowlisted error-code summaries, confirms Mike's identity and membership, and revokes its own test session. A rejected password stops before installation or browser attempts. A passing preflight does not replace the UI session tests.
+
+For a local build, provide the public Supabase configuration through the existing environment mechanism and run `npm run build`. With the private password already injected, run:
+
+```sh
+E2E_RUN_LIVE=1 E2E_BASE_URL=http://localhost:3000 \
+  ./node_modules/.bin/playwright test --config playwright.live.config.ts
+```
+
+The configuration exits with an explicit error before launching a browser if opt-in, the private password or the approved target is missing. A passing anonymous suite is not a substitute for this run.
+
+The config starts the built application automatically, bound to `127.0.0.1` on port 3000. An existing server may be reused locally; CI always starts its own server.
+
+Run the same suite against the isolated backend first (`npm run test:e2e:isolated`, see `tests/isolated/README.md`); CI does this before any live run.
+
+The suite runs on desktop Chromium and Pixel 7, one project at a time. Each project is a serial group of focused steps followed by an independent sign-out test. Controls are located by their accessible role and visible label (`getByLabel(..., { exact: true })`, named regions for editor cards, named groups for line items and payments), never by CSS structure or substring text. Actions time out after 15 seconds, navigations after 30, assertions after 20 and each step after 60, so a broken step fails promptly with the page state. After the first failure the remaining steps of the group are skipped.
+
+Hosted Supabase Auth occasionally leaves a request unanswered for about ten seconds (a read and its retry). The application recovers by itself: admin pages show a "Reconnecting…" page that refreshes after 3 seconds, a failed first data load is retried after 3, 6 and 12 seconds, and a save the server refused before writing (it sends `Retry-After`) is repeated after 3 and 6 seconds. The suite allows for exactly that and no more: assertions wait 20 seconds, each admin navigation waits up to 30 seconds for the page to load its cloud records, and the suite's own API and customer-link requests are repeated up to twice after such a 503 or 5xx. A write is repeated only when the response says nothing was written. Every repeat is logged with its path, so upstream stalls stay visible in the run output.
+
+Sessions and records are worker fixtures (`support/fixtures.ts`). Each project signs in a primary and a second browser once, plus one more browser for the sign-out test. Playwright tears these fixtures down with their own time budget after the last step passes, fails or times out: the record ledger removes every record created by the run (by ID, and anything titled `TEST <run id> `), confirms they are gone, and then every browser's Supabase session is revoked through `/api/auth/logout` and its context closed. Cleanup problems fail the run with fixed messages without hiding the original failure. When a run starts, records left by an interrupted earlier run — titled `TEST <12 hex characters> ` and, for documents, marked `isTest` with a `TEST-` number, and older than 20 minutes — are removed and only their count is reported. Mike's own Settings test invoice has no run marker and is never touched.
+
+Each project independently verifies:
+
+- Real UI sign-in; HttpOnly, Secure, SameSite cookies; reload persistence; refreshing a session after removing its expired access cookie and after Supabase rejects a stale access JWT (403 `bad_jwt`); logout; and rejection of replayed logged-out cookies.
+- Clearly labelled `TEST-`/`isTest: true` drafts, including Bill Gates's 20m² wall with two painters at 3 × £250 and £180 materials, totalling £1,680 before VAT. Customer details have no real delivery address. Nothing is issued, emailed or sent to a customer.
+- UI edits and VAT calculation; a £500 test deposit and £1,180 remainder in storage, another browser and the same customer link; marking the remainder paid while retaining both payment entries.
+- Independent login in a second browser with the other viewport; quotes, invoices and linked diary bookings appearing and saving across the two browsers; a background refresh not resetting the diary calendar.
+- UI conversion of an accepted test quotation into another draft test invoice without consuming issued invoice numbers or adding bank details.
+- Reviewed import of a missing TEST quote from synthetic original-browser storage, retaining every existing cloud record/settings, the newer duplicate and the original source bytes; an independently authenticated browser sees the imported quote.
+- Actual invoice and quote views in separate unauthenticated browser contexts; no admin cookies, other customer documents, private notes or private payment labels (customers see the payment method and date); blocked admin APIs; unguessable tokens; old links failing after replacement; revoked links returning 404.
+- Mobile and desktop document/editor/diary layouts without horizontal overflow, and deletion through the UI.
+- Customer print-button behavior, print CSS, and a complete Chromium A4 PDF generated in memory only. No PDF, bearer URL, screenshot or browser state is saved or attached.
+
+Stop other edits during a live run. API fixture writes preserve all current unrelated records and settings and use the latest revision. Conflicting saves fail instead of overwriting newer data; cleanup retries against the latest revision when a page's own background save wins the race. Cleanup removes only records created by this run; it never restores an old complete snapshot. It revokes and closes every created context, including partially completed sign-ins. Failures are reported as fixed messages without response bodies, tokens or customer data. If connectivity or authentication fails during cleanup, the next run removes the leftovers; they can also be found in the admin by their `TEST <run id>` titles. Permanent number reservations may remain for these unique `TEST-` identifiers, as designed; normal issued quote/invoice counters are unchanged.
+
+Traces, screenshots and video are disabled because they can contain passwords, session cookies and private customer URLs. Do not enable debug logging, HAR/network recording, trace collection, or upload browser state for this suite. Retain only the pass/fail stage summary. Do not upload `test-results/live` or generic live-job test artifacts: Playwright may still generate automatic error-context DOM snapshots on failure, which can contain existing customer names or generated customer links. Delete local live test output after checking a failure privately.
+
+These tests do not verify public enquiry email delivery or photo attachments; those require their own live Resend/form checks. A deployment is not ready to merge until both the complete authenticated suite and the enquiry workflow pass against the reviewed code.

@@ -1,0 +1,40 @@
+name: Supabase anonymous HTTP security
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-anonymous-fdctgtncawolrapwwevm
+  cancel-in-progress: true
+
+jobs:
+  real-anonymous-rest:
+    # This read-only probe is scoped to the authorised PR #6 backend change.
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.number == 6 &&
+       github.event.pull_request.head.ref == 'fix/production-admin' &&
+       github.event.pull_request.head.repo.full_name == github.repository) ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/fix/production-admin')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_SECURITY_URL: https://fdctgtncawolrapwwevm.supabase.co
+      # A public key is sufficient; this job has no admin password or secret key.
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_6VBwZ_uNQJsUQ6ygEWtUWg_T_LlGL3K
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+      - name: Verify real anonymous REST access boundaries
+        run: node scripts/verify-supabase-anonymous.mjs
+      # No dependencies, credentials, response bodies, or artifacts are retained.

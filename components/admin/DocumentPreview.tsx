@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
 import { useEffect } from "react";
 import { Icon } from "./Icon";
 import { Loading, NotOnDevice } from "./ui";
@@ -7,6 +7,7 @@ import { InvoiceDocument } from "@/components/documents/InvoiceDocument";
 import { QuoteDocument } from "@/components/documents/QuoteDocument";
 import { updateInvoice, updateQuote } from "@/lib/admin/operations";
 import { clock, commit, useAdminState } from "@/lib/admin/store";
+import { ShareControls } from "./ShareControls";
 
 export function DocumentPreview({ kind, id }: { kind: "quote" | "invoice"; id: string }) {
   const state = useAdminState();
@@ -44,16 +45,10 @@ export function DocumentPreview({ kind, id }: { kind: "quote" | "invoice"; id: s
           <Icon name="print" size={18} /> Print / Save PDF
         </button>
       </div>
-      <p className="adm-preview-note adm-chrome">
-        <Icon name="device" size={16} />
-        <span>
-          Private preview. This page only works on this device, so don&apos;t send its address to a customer. Choose{" "}
-          <strong>Print / Save PDF</strong> and send the PDF instead.
-        </span>
-      </p>
-      {doc.status === "draft" && (
+      <ShareControls key={id} id={id} />
+      {doc.status === "draft" && !("isTest" in doc && doc.isTest === true) && (
         <div className="adm-preview-status adm-chrome">
-          <span>Still a draft. Mark it as sent once the PDF is with the customer.</span>
+          <span>Still a draft. Mark it as sent once the customer has the document.</span>
           <button type="button" className="adm-btn adm-btn-ghost adm-btn-small" onClick={markSent}>
             <Icon name="check" size={16} /> Mark as sent
           </button>
@@ -69,3 +64,4 @@ export function DocumentPreview({ kind, id }: { kind: "quote" | "invoice"; id: s
     </div>
   );
 }
+

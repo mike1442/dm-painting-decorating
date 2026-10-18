@@ -1,12 +1,13 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
+import { ShareControls } from "./ShareControls";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { TotalsSummary, VatControls } from "./DocumentControls";
 import { CustomerFields, DateField, LinesField, NumberField, SelectField, TextArea, TextField } from "./fields";
 import { Icon } from "./Icon";
 import { LineItemsEditor, UnitSuggestions } from "./LineItemsEditor";
-import { Card, CustomerLinkNotice, Loading, NotOnDevice, PageHead, SaveStatus, StateChip } from "./ui";
+import { Card, Loading, NotOnDevice, PageHead, SaveStatus, StateChip } from "./ui";
 import { paymentMethodLabels } from "@/components/documents/InvoiceDocument";
 import { addDays, formatShortDate } from "@/lib/admin/dates";
 import { newId } from "@/lib/admin/factories";
@@ -118,7 +119,7 @@ export function InvoiceEditor({ id }: { id: string }) {
         )}
         <div className="adm-payments">
           {invoice.payments.map((payment, index) => (
-            <div className="adm-payment" key={payment.id}>
+            <div className="adm-payment" key={payment.id} role="group" aria-label={`Payment ${index + 1}`}>
               <DateField label="Date" value={payment.date} onChange={date => setPayment(payment.id, { date })} />
               <NumberField label="Amount" prefix="£" decimals={2} placeholder="0.00" value={payment.amount} onChange={amount => setPayment(payment.id, { amount })} />
               <SelectField label="Method" value={payment.method} options={methodOptions} onChange={method => setPayment(payment.id, { method })} />
@@ -137,6 +138,11 @@ export function InvoiceEditor({ id }: { id: string }) {
         <button type="button" className="adm-btn adm-btn-ghost" onClick={() => addPayment()}>
           <Icon name="plus" size={18} /> Record a payment or deposit
         </button>
+        {totals.balancePence > 0 && (
+          <button type="button" className="adm-btn" onClick={() => {
+            if (window.confirm(`Record ${formatPence(totals.balancePence)} received and mark this invoice paid?`)) addPayment({ amount: totals.balancePence / 100, label: "Balance received" });
+          }}>Mark paid</button>
+        )}
       </Card>
 
       <Card title="Totals">
@@ -186,7 +192,7 @@ export function InvoiceEditor({ id }: { id: string }) {
         )}
       </Card>
 
-      <CustomerLinkNotice kind="invoice" />
+      <ShareControls id={id} />
 
       <div className="adm-danger-zone">
         <button type="button" className="adm-btn adm-btn-danger" onClick={remove}>
@@ -206,3 +212,4 @@ export function InvoiceEditor({ id }: { id: string }) {
     </div>
   );
 }
+

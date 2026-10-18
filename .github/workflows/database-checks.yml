@@ -1,0 +1,72 @@
+name: Database security checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: database-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pg17:
+    name: PostgreSQL 17 (${{ matrix.scenario }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [existing, fresh]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: dm_admin_test
+          POSTGRES_USER: postgres
+          # Disposable CI-only password for this isolated service container.
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d dm_admin_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGUSER: postgres
+      PGDATABASE: dm_admin_test
+      PGPASSWORD: postgres
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Ensure PostgreSQL client is available
+        run: |
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-client
+          fi
+      - name: Bootstrap isolated test database
+        if: matrix.scenario == 'existing'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/bootstrap.sql
+      - name: Bootstrap isolated Auth fixtures for fresh application schema
+        if: matrix.scenario == 'fresh'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/auth-fixture.sql
+      - name: Create fresh application base schema
+        if: matrix.scenario == 'fresh'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=supabase/base-schema.sql
+      - name: Apply production schema to isolated test database
+        run: psql -X --set=ON_ERROR_STOP=1 --file=supabase/production-admin.sql
+      - name: Verify database security boundaries
+        if: matrix.scenario == 'existing'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/security.sql
+      - name: Verify empty-schema installation and first use
+        if: matrix.scenario == 'fresh'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/fresh-schema.sql

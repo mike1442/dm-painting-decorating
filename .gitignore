@@ -4,3 +4,10 @@ out
 .env*
 !.env.example
 *.tsbuildinfo
+
+
+.env.local
+.env.*.local
+.vercel
+test-results/
+playwright-report/

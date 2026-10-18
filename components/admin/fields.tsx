@@ -1,17 +1,25 @@
 "use client";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 import { parseAmount } from "@/lib/admin/money";
 import { textList } from "@/lib/admin/normalise";
 import type { Address, Customer } from "@/lib/admin/types";
 
-type FieldProps = { label: string; hint?: string; className?: string; children: React.ReactNode };
+/** Props that name a control by its visible label and describe it by its hint. */
+export type ControlProps = { id: string; "aria-labelledby": string; "aria-describedby"?: string };
 
+type FieldProps = { label: string; hint?: string; className?: string; children: (control: ControlProps) => React.ReactNode };
+
+// The wrapping label keeps click-to-focus, but its text content also contains
+// hints, currency affixes, option text and textarea values. aria-labelledby
+// keeps the accessible name exactly the visible label for screen readers and tests.
 export function Field({ label, hint, className, children }: FieldProps) {
+  const id = useId();
+  const control: ControlProps = { id: `${id}control`, "aria-labelledby": `${id}label`, ...(hint ? { "aria-describedby": `${id}hint` } : {}) };
   return (
-    <label className={"adm-field" + (className ? ` ${className}` : "")}>
-      <span className="adm-field-label">{label}</span>
-      {children}
-      {hint && <small className="adm-field-hint">{hint}</small>}
+    <label className={"adm-field" + (className ? ` ${className}` : "")} htmlFor={control.id}>
+      <span className="adm-field-label" id={`${id}label`}>{label}</span>
+      {children(control)}
+      {hint && <small className="adm-field-hint" id={`${id}hint`}>{hint}</small>}
     </label>
   );
 }
@@ -27,7 +35,7 @@ type TextFieldProps = {
 export function TextField({ label, value, onChange, hint, className, ...input }: TextFieldProps) {
   return (
     <Field label={label} hint={hint} className={className}>
-      <input {...input} className="adm-input" value={value} onChange={e => onChange(e.target.value)} />
+      {control => <input {...input} {...control} className="adm-input" value={value} onChange={e => onChange(e.target.value)} />}
     </Field>
   );
 }
@@ -57,7 +65,7 @@ export function TextArea({ label, value, onChange, hint, placeholder, rows = 3, 
   const ref = useAutoHeight(value);
   return (
     <Field label={label} hint={hint} className={className}>
-      <textarea ref={ref} className="adm-input adm-textarea" rows={rows} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />
+      {control => <textarea {...control} ref={ref} className="adm-input adm-textarea" rows={rows} value={value} placeholder={placeholder} onChange={e => onChange(e.target.value)} />}
     </Field>
   );
 }
@@ -75,7 +83,8 @@ export function LinesField({ label, value, onChange, hint, placeholder }: {
   const ref = useAutoHeight(shown);
   return (
     <Field label={label} hint={hint}>
-      <textarea
+      {control => <textarea
+        {...control}
         ref={ref}
         className="adm-input adm-textarea"
         rows={4}
@@ -87,7 +96,7 @@ export function LinesField({ label, value, onChange, hint, placeholder }: {
           onChange(textList(e.target.value, 100));
         }}
         onBlur={() => setDraft(null)}
-      />
+      />}
     </Field>
   );
 }
@@ -108,9 +117,12 @@ export function NumberField({ label, value, onChange, prefix, suffix, decimals, 
   const formatted = value === 0 && placeholder ? "" : decimals !== undefined ? value.toFixed(decimals) : String(value);
   return (
     <Field label={label} hint={hint} className={className}>
-      <span className="adm-affix">
-        {prefix && <span className="adm-affix-text">{prefix}</span>}
+      {control => <span className="adm-affix">
+        {prefix && <span className="adm-affix-text" id={`${control.id}prefix`}>{prefix}</span>}
         <input
+          {...control}
+          // Units such as £, % or days describe the value without renaming the field.
+          aria-describedby={[control["aria-describedby"], prefix && `${control.id}prefix`, suffix && `${control.id}suffix`].filter(Boolean).join(" ") || undefined}
           className="adm-input"
           inputMode="decimal"
           autoComplete="off"
@@ -126,8 +138,8 @@ export function NumberField({ label, value, onChange, prefix, suffix, decimals, 
           }}
           onBlur={() => setDraft(null)}
         />
-        {suffix && <span className="adm-affix-text">{suffix}</span>}
-      </span>
+        {suffix && <span className="adm-affix-text" id={`${control.id}suffix`}>{suffix}</span>}
+      </span>}
     </Field>
   );
 }
@@ -141,7 +153,7 @@ export function DateField({ label, value, onChange, hint, className }: {
 }) {
   return (
     <Field label={label} hint={hint} className={className}>
-      <input type="date" className="adm-input" value={value} onChange={e => e.target.value && onChange(e.target.value)} />
+      {control => <input {...control} type="date" className="adm-input" value={value} onChange={e => e.target.value && onChange(e.target.value)} />}
     </Field>
   );
 }
@@ -156,13 +168,13 @@ export function SelectField<T extends string>({ label, value, options, onChange,
 }) {
   return (
     <Field label={label} hint={hint} className={className}>
-      <select className="adm-input adm-select" value={value} onChange={e => onChange(e.target.value as T)}>
+      {control => <select {...control} className="adm-input adm-select" value={value} onChange={e => onChange(e.target.value as T)}>
         {options.map(([option, text]) => (
           <option key={option} value={option}>
             {text}
           </option>
         ))}
-      </select>
+      </select>}
     </Field>
   );
 }
@@ -173,13 +185,14 @@ export function Toggle({ label, hint, checked, onChange }: {
   checked: boolean;
   onChange: (checked: boolean) => void;
 }) {
+  const id = useId();
   return (
     <label className="adm-toggle">
       <span>
-        <strong>{label}</strong>
-        {hint && <small>{hint}</small>}
+        <strong id={`${id}label`}>{label}</strong>
+        {hint && <small id={`${id}hint`}>{hint}</small>}
       </span>
-      <input type="checkbox" role="switch" checked={checked} onChange={e => onChange(e.target.checked)} />
+      <input type="checkbox" role="switch" aria-labelledby={`${id}label`} aria-describedby={hint ? `${id}hint` : undefined} checked={checked} onChange={e => onChange(e.target.checked)} />
       <i aria-hidden="true" />
     </label>
   );

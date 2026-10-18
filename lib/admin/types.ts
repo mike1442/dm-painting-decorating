@@ -1,6 +1,4 @@
-// Shared data model for the D&M admin. These shapes are the contract for
-// local storage today, JSON backups, ChatGPT-generated quotes and a future
-// Supabase backend, so change them deliberately and bump SCHEMA_VERSION.
+// Shared contract for persistent cloud records, backups and imported quotes.
 
 export const SCHEMA_VERSION = 1;
 
@@ -43,7 +41,7 @@ export type DepositSetting =
   | { type: "percent"; value: number }
   | { type: "fixed"; value: number };
 
-/** Reserved for permanent customer links once a secure backend exists. */
+/** Legacy backup field. Active sharing tokens are stored separately as hashes. */
 export type ShareState = {
   token: null;
   status: "not-available";
@@ -52,6 +50,7 @@ export type ShareState = {
 export type QuoteStatus = "draft" | "sent" | "accepted" | "declined";
 
 export type Quote = {
+  isTest?: boolean;
   kind: "quote";
   id: string;
   number: string;
@@ -96,6 +95,7 @@ export type InvoiceStatus = "draft" | "sent";
 
 /** Links live on the child record: invoice.quoteId, booking.quoteId, booking.invoiceId. */
 export type Invoice = {
+  isTest?: boolean;
   kind: "invoice";
   id: string;
   number: string;
@@ -175,3 +175,4 @@ export type AdminData = {
     lastBackupAt: IsoDateTime | null;
   };
 };
+

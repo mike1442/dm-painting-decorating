@@ -35,7 +35,7 @@ export function LineItemsEditor({ items, onChange, addLabel, placeholder, subtot
   return (
     <div className="adm-lines">
       {items.map((item, index) => (
-        <div className="adm-line" key={item.id}>
+        <div className="adm-line" key={item.id} role="group" aria-label={`Line ${index + 1}`}>
           <TextArea
             label={`Line ${index + 1}`}
             value={item.description}

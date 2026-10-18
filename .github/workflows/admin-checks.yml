@@ -1,0 +1,69 @@
+name: Admin checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: admin-checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24"
+      - name: Install dependencies
+        id: dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci --no-fund
+          else
+            npm install --no-fund
+          fi
+      - name: Lint admin source
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: npm run lint
+      - name: Unit tests
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: npm test
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: npm run typecheck
+      - name: Production build
+        id: build
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: npm run build
+      - name: Audit production dependencies
+        if: ${{ !cancelled() && steps.dependencies.outcome == 'success' }}
+        run: npm audit --omit=dev --audit-level=high
+      - name: Install browser
+        id: browser
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: npx playwright install --with-deps chromium
+      - name: Desktop and mobile public workflows
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && steps.browser.outcome == 'success' }}
+        run: npm run test:e2e
+      - name: Upload browser report and resolved dependency lock
+        if: always()
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: admin-verification
+          path: |
+            playwright-report/
+            test-results/
+            package-lock.json
+          retention-days: 7

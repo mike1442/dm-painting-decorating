@@ -45,6 +45,7 @@ test("converting a quote copies everything into an independent invoice", () => {
   const { data, quote } = sampleQuote();
   const { data: next, invoice } = createInvoice(data, clock, quote.id);
   assert.equal(invoice.number, "INV-0001");
+  assert.equal("isTest" in invoice, false);
   assert.equal(invoice.quoteId, quote.id);
   assert.equal(invoice.quoteNumber, quote.number);
   assert.deepEqual(invoice.customer, quote.customer);
@@ -58,6 +59,34 @@ test("converting a quote copies everything into an independent invoice", () => {
 
   const edited = updateQuote(next, quote.id, q => ({ ...q, title: "Changed" }), clock.now);
   assert.equal(edited.invoices[0].title, "Lounge redecoration", "editing the quote leaves the invoice alone");
+});
+
+test("test quotation copies and conversions remain tests without consuming issued numbers", () => {
+  const initial = emptyData(clock.now);
+  initial.settings.bank = { accountName: "Business account", sortCode: "11-22-33", accountNumber: "12345678" };
+  const created = createQuote(initial, clock, { isTest: true, title: "TEST painting example" });
+  const duplicate = duplicateQuote(created.data, created.quote.id, clock)!;
+  const converted = createInvoice(duplicate.data, clock, created.quote.id);
+
+  const testRecords = [created.quote, duplicate.quote, converted.invoice];
+  for (const record of testRecords) {
+    assert.equal(record.isTest, true);
+    assert.equal(record.status, "draft");
+    assert.match(record.number, /^TEST-[a-f0-9]{32}$/);
+    assert.ok(record.number.length <= 40);
+  }
+  assert.equal(new Set(testRecords.map(record => record.number)).size, 3);
+  assert.equal(converted.data.settings.nextQuoteNumber, initial.settings.nextQuoteNumber);
+  assert.equal(converted.data.settings.nextInvoiceNumber, initial.settings.nextInvoiceNumber);
+  assert.deepEqual(converted.invoice.bank, { accountName: "", sortCode: "", accountNumber: "" });
+  assert.equal(converted.invoice.paymentNote, "");
+  assert.match(converted.invoice.internalNotes, /No payment is due/);
+  assert.equal(converted.invoice.quoteId, created.quote.id);
+
+  const real = createQuote(converted.data, clock);
+  assert.equal(real.quote.number, "Q-0001");
+  assert.equal("isTest" in real.quote, false);
+  assert.equal(createInvoice(real.data, clock).invoice.number, "INV-0001");
 });
 
 test("invoice totals and payment state", () => {

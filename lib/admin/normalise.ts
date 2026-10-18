@@ -110,6 +110,7 @@ export function normaliseQuote(v: unknown, settings: BusinessSettings, now: stri
   const today = now.slice(0, 10);
   return {
     kind: "quote",
+    ...(flag(q.isTest) ? { isTest: true } : {}),
     id: id(q.id),
     number: text(q.number, 40),
     status: oneOf(q.status, ["draft", "sent", "accepted", "declined"] as const, "draft"),
@@ -138,6 +139,7 @@ export function normaliseInvoice(v: unknown, settings: BusinessSettings, now: st
   const today = now.slice(0, 10);
   return {
     kind: "invoice",
+    ...(flag(i.isTest) ? { isTest: true } : {}),
     id: id(i.id),
     number: text(i.number, 40),
     status: oneOf(i.status, ["draft", "sent"] as const, "draft"),
@@ -238,3 +240,4 @@ export function normaliseAdminData(v: unknown, now: string): AdminData {
     },
   };
 }
+

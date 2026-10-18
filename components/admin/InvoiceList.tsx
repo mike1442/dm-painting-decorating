@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Icon } from "./Icon";
@@ -48,7 +48,7 @@ export function InvoiceList() {
     <div className="adm-page">
       <PageHead
         title="Invoices"
-        subtitle={outstanding > 0 ? `${formatPence(outstanding)} outstanding on sent invoices` : `${invoices.length} on this device`}
+        subtitle={outstanding > 0 ? `${formatPence(outstanding)} outstanding on sent invoices` : invoices.length === 1 ? "1 invoice" : `${invoices.length} invoices`}
         action={
           <button type="button" className="adm-btn" onClick={() => setChoosing(true)}>
             <Icon name="plus" size={18} /> New invoice

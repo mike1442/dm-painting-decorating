@@ -25,6 +25,7 @@
 .dmdoc-kind{text-align:right;padding-top:6px}
 .dmdoc-kind h1{font:400 40px/1 Manrope,sans-serif;letter-spacing:-.045em;color:var(--dmdoc-ink)}
 .dmdoc-kind p{margin-top:12px;font:600 12px/1.2 'DM Sans',sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--dmdoc-muted)}
+.dmdoc-test-notice{margin:22px 0 0;padding:12px 16px;border:2px solid #9b5921;color:#713c13;background:#fff5e9;font:700 12px/1.4 'DM Sans',system-ui,sans-serif;text-align:center;text-transform:uppercase;letter-spacing:.06em;break-inside:avoid}
 
 .dmdoc-parties{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:36px;padding:30px 0 34px}
 .dmdoc-party{display:flex;flex-direction:column;color:var(--dmdoc-ink-2);font-size:13px;line-height:1.6}
@@ -123,3 +124,4 @@
   .dmdoc-frame-space{height:13mm}
   .dmdoc-body{padding:4mm 17mm 0}
 }
+

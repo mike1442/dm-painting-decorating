@@ -1,4 +1,4 @@
-import { BusinessFooter, DocHeader, Intro, ItemsTable, Meta, Paper, Party, ScopeList, Totals } from "./parts";
+import { BusinessFooter, DocHeader, Intro, ItemsTable, Meta, Paper, Party, ScopeList, TestDocumentNotice, Totals } from "./parts";
 import type { TotalRow } from "./parts";
 import { formatLongDate, formatShortDate } from "@/lib/admin/dates";
 import { invoiceTotals, toPence } from "@/lib/admin/money";
@@ -13,6 +13,7 @@ export const paymentMethodLabels: Record<PaymentMethod, string> = {
 };
 
 export function InvoiceDocument({ invoice, business }: { invoice: Invoice; business: BusinessSettings }) {
+  const isTest = "isTest" in invoice && invoice.isTest === true;
   const totals = invoiceTotals(invoice);
   const hasMaterials = totals.materialsPence !== 0 || invoice.materials.some(m => m.description.trim());
   const paidInFull = totals.totalPence > 0 && totals.balancePence <= 0;
@@ -33,7 +34,7 @@ export function InvoiceDocument({ invoice, business }: { invoice: Invoice; busin
       rows.push({ label: `${label}, ${formatShortDate(p.date)}`, pence: toPence(p.amount), tone: "minus" });
     });
   if (invoice.payments.length) rows.push({ label: "Balance due", pence: Math.max(totals.balancePence, 0), tone: "balance" });
-  else rows[rows.length - 1] = { ...rows[rows.length - 1], label: invoice.vat.enabled ? "Amount due including VAT" : "Amount due" };
+  else rows[rows.length - 1] = { ...rows[rows.length - 1], label: isTest ? "Test total" : invoice.vat.enabled ? "Amount due including VAT" : "Amount due" };
 
   const bank = invoice.bank;
   const bankRows: [string, string][] = [
@@ -46,6 +47,7 @@ export function InvoiceDocument({ invoice, business }: { invoice: Invoice; busin
   return (
     <Paper label={`Invoice ${invoice.number}`}>
       <DocHeader kind="Invoice" number={invoice.number} />
+      {isTest && <TestDocumentNotice />}
       <div className="dmdoc-parties">
         <Party heading="Billed to" customer={invoice.customer} />
         <Meta
@@ -67,8 +69,8 @@ export function InvoiceDocument({ invoice, business }: { invoice: Invoice; busin
         subtotalPence={totals.materialsPence}
         note={invoice.materialsNote}
       />
-      <Totals rows={rows} stamp={paidInFull ? "Paid in full" : undefined} />
-      {!paidInFull && (
+      <Totals rows={rows} stamp={paidInFull && !isTest ? "Paid in full" : undefined} />
+      {!paidInFull && !isTest && (
         <div className="dmdoc-pay">
           <p className="dmdoc-label">Payment details</p>
           <dl>
@@ -93,8 +95,9 @@ export function InvoiceDocument({ invoice, business }: { invoice: Invoice; busin
           {invoice.paymentNote.trim() && <p>{invoice.paymentNote.trim()}</p>}
         </div>
       )}
-      {paidInFull && <p className="dmdoc-thanks">Thank you. This invoice has been paid in full.</p>}
+      {paidInFull && !isTest && <p className="dmdoc-thanks">Thank you. This invoice has been paid in full.</p>}
       <BusinessFooter business={business} />
     </Paper>
   );
 }
+

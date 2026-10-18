@@ -1,12 +1,13 @@
 "use client";
-import Link from "next/link";
+import Link from "./AdminLink";
+import { ShareControls } from "./ShareControls";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DepositControls, TotalsSummary, VatControls } from "./DocumentControls";
 import { CustomerFields, DateField, LinesField, SelectField, TextArea, TextField } from "./fields";
 import { Icon } from "./Icon";
 import { LineItemsEditor, UnitSuggestions } from "./LineItemsEditor";
-import { Card, CustomerLinkNotice, Loading, NotOnDevice, PageHead, SaveStatus, StateChip } from "./ui";
+import { Card, Loading, NotOnDevice, PageHead, SaveStatus, StateChip } from "./ui";
 import { addDays, daysBetween, formatShortDate } from "@/lib/admin/dates";
 import { depositPence, documentTotals, formatPence } from "@/lib/admin/money";
 import { createInvoice, deleteQuote, duplicateQuote, updateQuote } from "@/lib/admin/operations";
@@ -195,7 +196,7 @@ export function QuoteEditor({ id }: { id: string }) {
         )}
       </Card>
 
-      <CustomerLinkNotice kind="quotation" />
+      <ShareControls id={id} />
 
       <div className="adm-danger-zone">
         <button type="button" className="adm-btn adm-btn-danger" onClick={remove}>
@@ -215,3 +216,4 @@ export function QuoteEditor({ id }: { id: string }) {
     </div>
   );
 }
+
