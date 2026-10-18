@@ -79,8 +79,16 @@ async function configuration() {
   let oidcUrl;
   try { oidcUrl = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL); }
   catch { stop("BLOCKED: The GitHub OIDC request endpoint is invalid."); }
-  if (oidcUrl.protocol !== "https:" || !oidcUrl.hostname.endsWith(".actions.githubusercontent.com")
-    || !/\/idtoken$/i.test(oidcUrl.pathname) || oidcUrl.port || oidcUrl.username || oidcUrl.password || oidcUrl.hash) stop("BLOCKED: The OIDC request endpoint must be the HTTPS endpoint supplied by GitHub Actions.");
+  // GitHub has served the token from both ".../jobs/<id>/idtoken" and
+  // ".../idtoken/<plan>/<job>"; require an idtoken segment, not a fixed suffix.
+  // Only the names of failed conditions are reported, never the URL.
+  const endpointProblems = Object.entries({
+    scheme: oidcUrl.protocol === "https:",
+    host: oidcUrl.hostname.endsWith(".actions.githubusercontent.com"),
+    path: oidcUrl.pathname.split("/").some(segment => segment.toLowerCase() === "idtoken"),
+    authority: !oidcUrl.port && !oidcUrl.username && !oidcUrl.password && !oidcUrl.hash,
+  }).filter(([, ok]) => !ok).map(([name]) => name);
+  if (endpointProblems.length) stop(`BLOCKED: The OIDC request endpoint must be the HTTPS endpoint supplied by GitHub Actions (failed: ${endpointProblems.join(", ")}).`);
   oidcUrl.searchParams.set("audience", audience);
   return { head, eventName, ref, workflowRef, oidcUrl };
 }
@@ -129,15 +137,20 @@ async function freshOidc(config) {
   } catch { stop("BLOCKED: The GitHub OIDC credential could not be validated."); }
   const now = Math.floor(Date.now() / 1000);
   const subject = config.eventName === "pull_request" ? `repo:${repository}:pull_request` : `repo:${repository}:ref:${config.ref}`;
-  if (header?.alg !== "RS256" || typeof header.kid !== "string" || header.kid.length > 200
-    || claims?.iss !== issuer || claims.aud !== audience || claims.repository !== repository
-    || claims.repository_owner !== "mike1442" || claims.sub !== subject || claims.ref !== config.ref
-    || claims.event_name !== config.eventName || claims.workflow !== "Live admin verification" || claims.workflow_ref !== config.workflowRef
-    || claims.workflow_sha !== process.env.GITHUB_WORKFLOW_SHA || claims.sha !== process.env.GITHUB_SHA
-    || String(claims.run_id) !== process.env.GITHUB_RUN_ID || String(claims.run_attempt) !== process.env.GITHUB_RUN_ATTEMPT
-    || !Number.isSafeInteger(claims.exp) || !Number.isSafeInteger(claims.iat) || !Number.isSafeInteger(claims.nbf)
-    || claims.exp <= now + 240 || claims.exp > now + 600 || claims.iat > now + 30 || claims.iat < now - 60
-    || claims.nbf > now + 30 || claims.exp <= claims.iat) stop("BLOCKED: The GitHub OIDC identity, workflow or short-lived expiry did not match the authorised preview run.");
+  const times = [claims?.exp, claims?.iat, claims?.nbf].every(Number.isSafeInteger);
+  // Report only which named checks failed (plus the lifetime), never claim values.
+  const claimProblems = Object.entries({
+    header: header?.alg === "RS256" && typeof header.kid === "string" && header.kid.length <= 200,
+    iss: claims?.iss === issuer, aud: claims?.aud === audience,
+    repository: claims?.repository === repository && claims?.repository_owner === "mike1442",
+    sub: claims?.sub === subject, ref: claims?.ref === config.ref, event_name: claims?.event_name === config.eventName,
+    workflow: claims?.workflow === "Live admin verification" && claims?.workflow_ref === config.workflowRef && claims?.workflow_sha === process.env.GITHUB_WORKFLOW_SHA,
+    sha: claims?.sha === process.env.GITHUB_SHA,
+    run: String(claims?.run_id) === process.env.GITHUB_RUN_ID && String(claims?.run_attempt) === process.env.GITHUB_RUN_ATTEMPT,
+    times: times && claims.iat <= now + 30 && claims.iat >= now - 60 && claims.nbf <= now + 30 && claims.exp > claims.iat,
+    [`lifetime ${times ? claims.exp - now : "?"}s`]: times && claims.exp > now + 240 && claims.exp <= now + 600,
+  }).filter(([, ok]) => !ok).map(([name]) => name);
+  if (claimProblems.length) stop(`BLOCKED: The GitHub OIDC identity, workflow or short-lived expiry did not match the authorised preview run (failed: ${claimProblems.join(", ")}).`);
   signingKeys ??= await fetchJson(`${issuer}/.well-known/jwks`, { headers: { Accept: "application/json" } }, "GitHub OIDC signing keys");
   const jwk = signingKeys?.keys?.find(key => key.kid === header.kid && key.kty === "RSA" && (!key.use || key.use === "sig") && (!key.alg || key.alg === "RS256"));
   let verified = false;
