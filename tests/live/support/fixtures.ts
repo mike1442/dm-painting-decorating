@@ -127,17 +127,57 @@ function deviceOptions(use: Record<string, unknown>, baseURL: string): BrowserCo
   return { ...Object.fromEntries(pick.filter(key => use[key] !== undefined).map(key => [key, use[key]])), baseURL };
 }
 
+/** Admin pages summarised when a step fails, with their latest admin responses. */
+const watched = new Map<string, { page: Page; recent: string[] }>();
+
+function watch(name: string, page: Page, origin: string) {
+  const recent: string[] = [];
+  page.on("response", response => {
+    const url = new URL(response.url());
+    const kind = response.request().resourceType();
+    // Only admin/auth paths: customer links carry bearer tokens and are never recorded.
+    if (url.origin !== origin || !["document", "fetch"].includes(kind) || !/^\/(admin|login|api\/(admin|auth))(\/|$)/.test(url.pathname)) return;
+    recent.push(`${response.request().method()} ${url.pathname} ${response.status()}`);
+    if (recent.length > 8) recent.shift();
+  });
+  watched.set(name, { page, recent });
+}
+
+async function describePage(page: Page) {
+  return page.evaluate(() => {
+    const path = location.pathname.startsWith("/d/") ? "/d/[token]" : location.pathname;
+    // Page titles only when they are generic or this suite's TEST records, never a customer's job.
+    const headings = [...document.querySelectorAll("h1")].map(node => node.textContent?.trim() ?? "")
+      .map(text => /^(Quotes|Invoices|Diary|Settings|Admin sign in|Connect to your records|This document is unavailable)$|^TEST /.test(text) ? text : "[other]");
+    const body = document.body?.innerText.trim() ?? "";
+    return {
+      path,
+      headings,
+      alerts: [...document.querySelectorAll('[role="alert"]')].map(node => node.textContent?.trim().slice(0, 160)),
+      loading: Boolean(document.querySelector('[aria-busy="true"]')),
+      saveStatus: document.querySelector(".adm-device-pill")?.getAttribute("aria-label") ?? null,
+      // A raw JSON error page (e.g. a 503 from middleware) holds only the app's fixed message.
+      errorBody: body.startsWith("{") ? body.slice(0, 160) : null,
+    };
+  }).catch(() => "unavailable");
+}
+
 async function session(live: Live, device: BrowserContextOptions, browser: Browser, name: string, provide: (session: Session) => Promise<void>) {
   const context = await browser.newContext(device);
   let failure: unknown;
   try {
     await prepareLiveBrowser(context, live.baseURL);
     const page = await context.newPage();
+    watch(name, page, live.baseURL);
     await signIn(page, live.password);
     await provide({ context, page });
   } catch (error) {
     failure = error;
+    // A failed sign-in has no test step to report it, so describe the page here.
+    const watching = watched.get(name);
+    if (watching && !watching.page.isClosed()) console.log(`Diagnostics for ${name}: ${JSON.stringify({ page: await describePage(watching.page), recent: watching.recent })}`);
   }
+  watched.delete(name);
   // Also covers a partially completed sign-in that already holds a live session.
   const cleanup = await revokeAndClose(context, live.baseURL, name);
   if (failure) {
@@ -150,7 +190,7 @@ async function session(live: Live, device: BrowserContextOptions, browser: Brows
 
 type WorkerFixtures = { live: Live; admin: Session; observer: Session; customer: Session; ledger: Ledger; records: Records };
 
-export const test = base.extend<{ deadline: void }, WorkerFixtures>({
+export const test = base.extend<{ deadline: void; diagnostics: void }, WorkerFixtures>({
   live: [async ({}, use, workerInfo) => {
     const { baseURL, password } = liveEnvironment();
     const isMobile = workerInfo.project.use.isMobile === true;
@@ -248,6 +288,16 @@ export const test = base.extend<{ deadline: void }, WorkerFixtures>({
       throw new Error("BLOCKED: The preview access credential would expire before this step and its cleanup could finish. Remaining steps were not started.");
     }
     await use();
+  }, { auto: true }],
+
+  // Traces and DOM snapshots are disabled for privacy, so a failed step reports
+  // a sanitised summary of each signed-in page instead.
+  diagnostics: [async ({}, use, testInfo) => {
+    await use();
+    if (testInfo.status === testInfo.expectedStatus) return;
+    for (const [name, { page, recent }] of watched) {
+      if (!page.isClosed()) console.log(`Diagnostics for ${name}: ${JSON.stringify({ page: await describePage(page), recent })}`);
+    }
   }, { auto: true }],
 });
 
