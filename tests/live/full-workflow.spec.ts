@@ -214,7 +214,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("heading", { name: "New booking", exact: true })).toBeVisible();
       await expect(dialog.getByLabel("Customer", { exact: true })).toHaveValue("Bill Gates");
-      await dialog.getByLabel("Job description", { exact: true }).fill(`TEST ${runId} Wall painting booking`);
+      await dialog.locator("label.adm-field").filter({ hasText: "Job description" }).locator("input, textarea").fill(`TEST ${runId} Wall painting booking`);
       await dialog.getByLabel("Linked quote", { exact: true }).selectOption(quoteId);
       const date = await dialog.getByLabel("First day", { exact: true }).inputValue();
       await layoutFits(page);
