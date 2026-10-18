@@ -34,12 +34,13 @@ function restStatus(code, anonymous) {
   return 400;
 }
 
-export async function startEmulator({ databaseUrl, port, tls, publishableKey, adminPassword, accessLifetime = 3600 }) {
+export async function startEmulator({ databaseUrl, port, tls, publishableKey, adminPassword, accessLifetime = 3600, latencyMs = 0, stallEveryRead = 0 }) {
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 8 });
   const secret = randomBytes(32);
   /** refresh token -> { sessionId, revokedAt, child } */
   const refreshTokens = new Map();
-  const stats = { signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0 };
+  const stats = { signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0, stalled: 0 };
+  let reads = 0;
 
   const sign = claims => {
     const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode(claims)}`;
@@ -224,6 +225,14 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
         let body;
         try { body = text ? JSON.parse(text) : undefined; }
         catch { [status, payload] = [400, { code: "PGRST102", message: "Empty or invalid json" }]; }
+        // Optional network round-trip delay, to exercise behaviour under hosted-service latency.
+        if (latencyMs) await new Promise(resolve => setTimeout(resolve, latencyMs));
+        // Optionally leave every Nth read unanswered, like a stalled hosted connection.
+        const read = request.method === "GET" || /\/rpc\/(dm_admin_is_member|dm_get_data|dm_get_shared_document)$/.test(url.pathname);
+        if (stallEveryRead && read && ++reads % stallEveryRead === 0) {
+          stats.stalled += 1;
+          return;
+        }
         if (status === undefined) [status, payload] = await route(request, url, body);
       } catch {
         [status, payload] = [500, { message: "Isolated emulator failure" }];

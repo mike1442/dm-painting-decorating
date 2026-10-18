@@ -19,4 +19,6 @@ ISOLATED_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/postgres npm r
 
 Extra arguments go to Playwright, e.g. `-- --project live-mobile-chromium`. `ISOLATED_SKIP_BUILD=1` reuses a build already made by this runner. Remove the hosts entry afterwards on a workstation.
 
+Two options exercise hosted-service conditions: `ISOLATED_SUPABASE_LATENCY_MS=300` delays every upstream response, and `ISOLATED_SUPABASE_STALL_EVERY_READ=25` leaves every 25th read (`GET`, or a read-only RPC) unanswered, like a stalled connection. The latter reproduces the live failure where a page stayed on "Connecting…"; the application must recover through its bounded read retry (`lib/server/supabase.ts`) and the suite must still pass.
+
 This verifies application, UI, session and database behaviour end to end. It does not verify the hosted project's actual configuration, Vercel deployment protection or email delivery; the live jobs remain the release gate for those.

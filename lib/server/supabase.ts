@@ -16,23 +16,56 @@ function configuration() {
   if (!publicKey) throw new BackendError(503, "configuration", "Only a Supabase public API key may be configured for this application.");
   return { url, key };
 }
-export async function supabaseRequest(path: string, { token, method = "GET", body }: { token?: string; method?: string; body?: unknown } = {}) {
+const READ_TIMEOUT_MS = 5000;
+const WRITE_TIMEOUT_MS = 15000;
+const SLOW_MS = 2000;
+/** Read-only RPCs may be repeated safely; every other RPC writes. */
+const READ_ONLY_RPCS = new Set(["dm_admin_is_member", "dm_get_data", "dm_get_shared_document"]);
+
+/** Operational log: method and path only, never the query, tokens or bodies. */
+function logUpstream(method: string, path: string, outcome: string, started: number) {
+  console.warn(`Supabase ${method} ${path.split("?")[0]} ${outcome} after ${Date.now() - started} ms`);
+}
+
+export async function supabaseRequest(path: string, { token, method = "GET", body, retryable = method === "GET" }: { token?: string; method?: string; body?: unknown; retryable?: boolean } = {}) {
   const { url, key } = configuration();
-  const response = await fetch(`${url}${path}`, {
-    method, cache: "no-store", signal: AbortSignal.timeout(15000),
-    headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  });
-  const result = await response.json().catch(() => null);
-  // Auth errors carry a numeric HTTP `code` and the reason in `error_code`; database errors carry the SQLSTATE in `code`.
-  if (!response.ok) throw new BackendError(response.status, String(typeof result?.error_code === "string" ? result.error_code : result?.code ?? ""));
-  return result;
+  // Every admin request waits on several sequential Supabase calls, so one stalled
+  // connection must not hold it for long. Reads get a short deadline and one
+  // retry; writes get one longer attempt, because repeating them is unsafe.
+  for (let attempt = 1; ; attempt += 1) {
+    const started = Date.now();
+    let response: Response;
+    let text: string;
+    try {
+      response = await fetch(`${url}${path}`, {
+        method, cache: "no-store", signal: AbortSignal.timeout(retryable ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS),
+        headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      });
+      text = await response.text();
+    } catch (error) {
+      const retry = retryable && attempt === 1;
+      logUpstream(method, path, retry ? "failed; retrying" : "failed", started);
+      if (retry) continue;
+      throw error;
+    }
+    if (Date.now() - started > SLOW_MS) logUpstream(method, path, `returned HTTP ${response.status}`, started);
+    let result: ReturnType<typeof JSON.parse> = null;
+    // An unreadable success body is a failed request, never an empty answer.
+    if (text) {
+      try { result = JSON.parse(text); }
+      catch { if (response.ok) throw new BackendError(502, "response"); }
+    }
+    // Auth errors carry a numeric HTTP `code` and the reason in `error_code`; database errors carry the SQLSTATE in `code`.
+    if (!response.ok) throw new BackendError(response.status, String(typeof result?.error_code === "string" ? result.error_code : result?.code ?? ""));
+    return result;
+  }
 }
 export async function publicRpc(name: string, body: Record<string, unknown>) {
-  return supabaseRequest(`/rest/v1/rpc/${name}`, { method: "POST", body });
+  return supabaseRequest(`/rest/v1/rpc/${name}`, { method: "POST", body, retryable: READ_ONLY_RPCS.has(name) });
 }
 export async function adminRpc(token: string, name: string, body: Record<string, unknown> = {}) {
-  return supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body });
+  return supabaseRequest(`/rest/v1/rpc/${name}`, { token, method: "POST", body, retryable: READ_ONLY_RPCS.has(name) });
 }
 export async function verifyAdmin(token: string): Promise<boolean> {
   if (!token) return false;
