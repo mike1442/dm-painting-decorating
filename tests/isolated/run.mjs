@@ -168,7 +168,7 @@ async function main() {
     const { databaseUrl, seeded } = await prepareDatabase(adminUrl);
     const publishableKey = `sb_publishable_isolated_${randomBytes(12).toString("hex")}`;
     const password = `isolated-${randomBytes(18).toString("base64url")}`;
-    emulator = await startEmulator({ databaseUrl, port, tls: { key: tls.key, cert: tls.cert }, publishableKey, adminPassword: password, latencyMs: Number(process.env.ISOLATED_SUPABASE_LATENCY_MS || 0), stallEveryRead: Number(process.env.ISOLATED_SUPABASE_STALL_EVERY_READ || 0) });
+    emulator = await startEmulator({ databaseUrl, port, tls: { key: tls.key, cert: tls.cert }, publishableKey, adminPassword: password, latencyMs: Number(process.env.ISOLATED_SUPABASE_LATENCY_MS || 0), stallEveryRead: Number(process.env.ISOLATED_SUPABASE_STALL_EVERY_READ || 0), stallBurst: Number(process.env.ISOLATED_SUPABASE_STALL_BURST || 1) });
 
     const env = {
       ...process.env,

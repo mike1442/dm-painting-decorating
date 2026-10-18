@@ -34,7 +34,7 @@ function restStatus(code, anonymous) {
   return 400;
 }
 
-export async function startEmulator({ databaseUrl, port, tls, publishableKey, adminPassword, accessLifetime = 3600, latencyMs = 0, stallEveryRead = 0 }) {
+export async function startEmulator({ databaseUrl, port, tls, publishableKey, adminPassword, accessLifetime = 3600, latencyMs = 0, stallEveryRead = 0, stallBurst = 1 }) {
   const pool = new pg.Pool({ connectionString: databaseUrl, max: 8 });
   const secret = randomBytes(32);
   /** refresh token -> { sessionId, revokedAt, child } */
@@ -42,6 +42,8 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
   const stats = { requests: 0, peakInFlight: 0, userChecks: 0, signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0, stalled: 0 };
   let reads = 0;
   let inFlight = 0;
+  /** Further stalls owed to the same read (path and credential), e.g. its retry. */
+  const owed = new Map();
 
   const sign = claims => {
     const unsigned = `${encode({ alg: "HS256", typ: "JWT" })}.${encode(claims)}`;
@@ -233,7 +235,15 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
         if (latencyMs) await new Promise(resolve => setTimeout(resolve, latencyMs));
         // Optionally leave every Nth read unanswered, like a stalled hosted connection.
         const read = request.method === "GET" || /\/rpc\/(dm_admin_is_member|dm_get_data|dm_get_shared_document)$/.test(url.pathname);
+        const same = `${url.pathname} ${request.headers.authorization ?? ""}`;
+        if (read && owed.get(same) > 0) {
+          owed.set(same, owed.get(same) - 1);
+          stats.stalled += 1;
+          inFlight -= 1;
+          return;
+        }
         if (stallEveryRead && read && ++reads % stallEveryRead === 0) {
+          if (stallBurst > 1) owed.set(same, stallBurst - 1);
           stats.stalled += 1;
           inFlight -= 1;
           return;

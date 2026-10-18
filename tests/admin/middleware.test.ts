@@ -77,6 +77,14 @@ test("real middleware preserves sessions on upstream rate limits and fails close
       assert.deepEqual(response.headers.getSetCookie(), [], "A temporary rate limit must preserve both session cookies");
       assert.equal(response.headers.get("location"), null, "A valid session must not be redirected to sign-in");
       assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+      if (path.startsWith("/api/")) {
+        assert.match((await response.json()).error, /temporarily unavailable/);
+        assert.equal(response.headers.get("retry-after"), "3", "Nothing ran, so the browser may repeat the request");
+      } else {
+        assert.match(response.headers.get("content-type") ?? "", /^text\/html/, "A page must not show a bare JSON error");
+        assert.equal(response.headers.get("retry-after"), "3");
+        assert.match(await response.text(), /<meta http-equiv="refresh" content="3">/, "The page must retry by itself once Supabase answers");
+      }
     }
     if (rateLimit === "member-rate-limit") assert.ok(calls.includes("/rest/v1/rpc/dm_admin_is_member"));
     if (rateLimit === "refresh-rate-limit") assert.ok(calls.includes("/auth/v1/token"));
@@ -100,9 +108,12 @@ test("real middleware preserves sessions on upstream rate limits and fails close
   }
 
   mode = "outage";
-  const unavailable = await middleware(request("/api/admin/data"));
-  assert.equal(unavailable.status, 503);
-  assert.deepEqual(unavailable.headers.getSetCookie(), [], "Upstream outages must preserve cookies");
+  for (const path of ["/api/admin/data", "/admin/quotes"]) {
+    const unavailable = await middleware(request(path));
+    assert.equal(unavailable.status, 503);
+    assert.deepEqual(unavailable.headers.getSetCookie(), [], "Upstream outages must preserve cookies");
+    assert.equal(unavailable.headers.get("x-middleware-next"), null, "An outage must never grant admin access");
+  }
 
   mode = "allowed";
   const allowed = await middleware(request("/api/admin/data"));

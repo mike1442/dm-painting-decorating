@@ -5,7 +5,7 @@ import { billGatesTestInvoice } from "../../../lib/admin/fixtures";
 import { invoiceTotals } from "../../../lib/admin/money";
 import { createQuote } from "../../../lib/admin/operations";
 import type { AdminData } from "../../../lib/admin/types";
-import { liveApi, liveEnvironment, prepareLiveBrowser, privateNavigate } from "./live-environment";
+import { adminReady, liveApi, liveEnvironment, prepareLiveBrowser, privateNavigate } from "./live-environment";
 
 // Shared fixtures for the real-workflow suite. Sessions, records and cleanup are
 // worker-scoped: Playwright tears them down with their own time budget after a
@@ -102,7 +102,7 @@ export async function signIn(page: Page, password: string) {
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   expect((await signedIn).status(), "Mike's confirmed Supabase Auth account and privately supplied password must authenticate successfully").toBe(200);
   await expect(page).toHaveURL(/\/admin\/quotes$/);
-  await expect(page.getByRole("link", { name: "Saved to cloud", exact: true })).toBeVisible();
+  await adminReady(page);
   await layoutFits(page);
 }
 

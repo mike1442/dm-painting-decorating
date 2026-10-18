@@ -16,7 +16,10 @@ export default defineConfig({
   // page state instead of exhausting a long test budget; sessions and TEST
   // records are cleaned up by worker fixtures with their own time budget.
   timeout: 60_000,
-  expect: { timeout: 10_000 },
+  // Hosted Supabase Auth occasionally leaves a request unanswered for ~10 s
+  // (a read and its retry); the app then repeats the load or save by itself
+  // after 3 s. A state that waits on cloud storage must outlast that cycle.
+  expect: { timeout: 20_000 },
   reporter: [["list"]],
   outputDir: "test-results/live",
   use: {

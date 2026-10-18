@@ -174,3 +174,120 @@ test("safe imports preserve current records and only replace settings by explici
   assert.equal(importMissingRecords(first.data, incoming, true).settings.phone, "01234 567890");
   assert.equal(first.data.quotes.length, 1, "preview/import does not mutate the existing snapshot");
 });
+
+test("a failed first load is retried after 3, 6 and 12 s, then left to the regular check", async context => {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const oldDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  context.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    sessionStorage: storage, localStorage: storage, location: { assign: () => {} },
+    addEventListener: () => {}, removeEventListener: () => {},
+    setInterval: (callback: () => void, ms: number) => setInterval(callback, ms),
+    clearInterval: (id: ReturnType<typeof setInterval>) => clearInterval(id),
+  } });
+  Object.defineProperty(globalThis, "document", { configurable: true, value: { visibilityState: "visible", addEventListener: () => {}, removeEventListener: () => {} } });
+  const stops: (() => void)[] = [];
+  context.after(() => {
+    for (const stop of stops) stop();
+    for (const [name, old] of [["window", oldWindow], ["document", oldDocument]] as const) {
+      if (old) Object.defineProperty(globalThis, name, old);
+      else Reflect.deleteProperty(globalThis, name);
+    }
+  });
+  let loads = 0;
+  let available = false;
+  context.mock.method(globalThis, "fetch", async () => {
+    loads += 1;
+    return available ? response(emptyData(now), 1) : Response.json({ error: "Authentication is temporarily unavailable." }, { status: 503 });
+  });
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(resolve => setImmediate(resolve)); };
+  const advance = async (ms: number) => { context.mock.timers.tick(ms); await settle(); };
+
+  const store = await import(`${new URL("../../lib/admin/cloud-store.ts", import.meta.url).href}?load-retry`);
+  stops.push(store.subscribeAdminState(() => {}));
+  await settle();
+  assert.equal(loads, 1);
+  assert.equal(store.getAdminState()?.persistence, "unavailable");
+  await advance(2_999);
+  assert.equal(loads, 1);
+  await advance(1);
+  assert.equal(loads, 2, "first retry after 3 s");
+  await advance(6_000);
+  assert.equal(loads, 3, "second retry 6 s later");
+  await advance(11_000);
+  assert.equal(loads, 4, "the regular 20 s check still runs");
+  await advance(1_000);
+  assert.equal(loads, 5, "third retry 12 s after the second");
+  await advance(18_999);
+  assert.equal(loads, 5, "no further prompt retries once the backoff is spent");
+  available = true;
+  await advance(1);
+  assert.equal(loads, 6);
+  assert.equal(store.getAdminState()?.ready, true, "the regular check recovers once Supabase answers");
+
+  // A later failed first load (fresh store) that recovers on its first retry leaves no retry pending.
+  const again = await import(`${new URL("../../lib/admin/cloud-store.ts", import.meta.url).href}?load-retry-recovers`);
+  available = false;
+  loads = 0;
+  stops.push(again.subscribeAdminState(() => {}));
+  await settle();
+  available = true;
+  await advance(3_000);
+  assert.equal(loads, 2);
+  assert.equal(again.getAdminState()?.ready, true);
+  await advance(16_999);
+  assert.equal(loads, 2, "a successful retry cancels the remaining backoff");
+});
+
+test("a save refused before writing is repeated automatically; an ambiguous failed write is not", async context => {
+  const values = new Map<string, string>();
+  const storage = { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => { values.set(key, value); }, removeItem: (key: string) => { values.delete(key); } };
+  const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { sessionStorage: storage, localStorage: storage, location: { assign: () => {} } } });
+  context.after(() => {
+    if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  });
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const settle = async () => { for (let i = 0; i < 10; i += 1) await new Promise(resolve => setImmediate(resolve)); };
+  let cloudRevision = 1;
+  let refusals: ("retry" | "ambiguous")[] = [];
+  const writes: number[] = [];
+  context.mock.method(globalThis, "fetch", async (_url: unknown, options?: RequestInit) => {
+    if (options?.method !== "PUT") return response(emptyData(now), cloudRevision);
+    const payload = JSON.parse(String(options.body)) as { data: AdminData; revision: number };
+    writes.push(payload.revision);
+    const refusal = refusals.shift();
+    if (refusal === "retry") return Response.json({ error: "Authentication is temporarily unavailable." }, { status: 503, headers: { "Retry-After": "3" } });
+    if (refusal === "ambiguous") return Response.json({ error: "The service is temporarily unavailable." }, { status: 503 });
+    cloudRevision += 1;
+    return response(payload.data, cloudRevision);
+  });
+  const store = await import(`${new URL("../../lib/admin/cloud-store.ts", import.meta.url).href}?save-retry`);
+  assert.equal(await store.refreshAdminData(), true);
+
+  refusals = ["retry", "retry"];
+  store.commit((data: AdminData) => createQuote(data, clock, { title: "Saved after Auth recovers" }).data);
+  const saved = store.flush();
+  await settle();
+  assert.equal(store.getAdminState()?.persistence, "saving", "A refused save keeps showing that it is still saving");
+  context.mock.timers.tick(3_000); await settle();
+  context.mock.timers.tick(6_000); await settle();
+  assert.equal(await saved, true);
+  assert.deepEqual(writes, [1, 1, 1], "Each repeat uses the same revision, since nothing was written");
+  assert.equal(store.getAdminState()?.persistence, "saved");
+
+  // Retries are bounded, and an ambiguous write failure is reported, never repeated.
+  for (const [refused, attempts] of [[["retry", "retry", "retry"], 3], [["ambiguous"], 1]] as const) {
+    writes.length = 0;
+    refusals = [...refused];
+    store.commit((data: AdminData) => createQuote(data, clock, { title: "Not saved yet" }).data);
+    const failed = store.flush();
+    for (let i = 0; i < 4; i += 1) { await settle(); context.mock.timers.tick(6_000); }
+    assert.equal(await failed, false);
+    assert.equal(writes.length, attempts);
+    assert.equal(store.getAdminState()?.persistence, "failed");
+  }
+});

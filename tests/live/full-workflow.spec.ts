@@ -4,7 +4,7 @@ import { invoiceTotals } from "../../lib/admin/money";
 import type { AdminData } from "../../lib/admin/types";
 import { documentTotal, editorTotal, expect, field, layoutFits, readCloud, region, revokeAndClose, signIn, test, waitCloud } from "./support/fixtures";
 import { verifyLegacyBrowserImport } from "./support/legacy-import";
-import { adminNavigate, liveApi, prepareLiveBrowser, privateNavigate } from "./support/live-environment";
+import { adminNavigate, adminReady, customerNavigate, liveApi, prepareLiveBrowser, privateNavigate } from "./support/live-environment";
 
 // Outside the anonymous suite's testDir. The dedicated config validates real
 // credentials and the preview allowlist before it launches any browser. Each
@@ -26,7 +26,7 @@ async function createCustomerLink(page: Page) {
 }
 
 async function unavailable(page: Page, url: string) {
-  const response = await privateNavigate(page, url);
+  const response = await customerNavigate(page, url);
   expect(response?.status(), "Invalid or revoked customer tokens must fail closed").toBe(404);
   await expect(page.getByRole("heading", { name: "This document is unavailable" })).toBeVisible();
 }
@@ -51,6 +51,7 @@ test.describe("authenticated admin workflow", () => {
     }
     expect(await page.evaluate(names => names.every(name => !document.cookie.split(";").some(cookie => cookie.trim().startsWith(`${name}=`))), sessionCookies), "Browser scripts must not read session cookies").toBe(true);
     await page.reload();
+    await adminReady(page);
     await expect(page.getByRole("heading", { name: "Quotes", exact: true })).toBeVisible();
 
     // The browser drops the access cookie when it expires; the refresh token restores it.
@@ -215,7 +216,7 @@ test.describe("authenticated admin workflow", () => {
     invoiceLink = await createCustomerLink(admin.page);
     expect(new URL(invoiceLink).origin === live.baseURL, "Customer links must remain on the selected application").toBe(true);
     const { page, context } = customer;
-    const response = await privateNavigate(page, invoiceLink);
+    const response = await customerNavigate(page, invoiceLink);
     expect(response?.status()).toBe(200);
     await expect(page.getByRole("heading", { name: "Invoice", exact: true })).toBeVisible();
     await expect(page.getByText("Bill Gates", { exact: true })).toBeVisible();
@@ -267,7 +268,7 @@ test.describe("authenticated admin workflow", () => {
     await expect(editorTotal(observer.page, "Balance due")).toHaveText("£1,180.00");
     await layoutFits(observer.page);
 
-    expect((await privateNavigate(customer.page, invoiceLink))?.status()).toBe(200);
+    expect((await customerNavigate(customer.page, invoiceLink))?.status()).toBe(200);
     await expect(documentTotal(customer.page, "Total")).toHaveText("£1,680.00");
     // dm_get_shared_document treats payment labels as private bookkeeping: the
     // customer sees the payment method and date, never the admin's own wording.
@@ -325,7 +326,7 @@ test.describe("authenticated admin workflow", () => {
     try {
       await prepareLiveBrowser(quoteCustomer, live.baseURL);
       const quotePage = await quoteCustomer.newPage();
-      const response = await privateNavigate(quotePage, quoteLink);
+      const response = await customerNavigate(quotePage, quoteLink);
       expect(response?.status()).toBe(200);
       await expect(quotePage.getByRole("heading", { name: "Quotation", exact: true })).toBeVisible();
       expect((await response!.text()).includes("Bill Gates"), "A quotation link must not disclose a different customer's invoice").toBe(false);
@@ -339,7 +340,7 @@ test.describe("authenticated admin workflow", () => {
     const replacement = await createCustomerLink(admin.page);
     expect(replacement !== invoiceLink, "Replacing a link must issue a new token").toBe(true);
     await unavailable(customer.page, invoiceLink);
-    expect((await privateNavigate(customer.page, replacement))?.status()).toBe(200);
+    expect((await customerNavigate(customer.page, replacement))?.status()).toBe(200);
     const revoked = admin.page.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/share" && response.request().method() === "POST");
     await region(admin.page, "Customer link").getByRole("button", { name: "Revoke customer access", exact: true }).click();
     expect((await revoked).status()).toBe(200);

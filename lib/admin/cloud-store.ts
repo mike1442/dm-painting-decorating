@@ -12,6 +12,10 @@ const RECOVERY_KEY = "dm-admin:pending:v1";
 const RECOVERED_KEY = "dm-admin:recovered:v1";
 const SAVE_DELAY_MS = 350;
 const REFRESH_INTERVAL_MS = 20_000;
+/** A failed first load is retried sooner than the regular check, backing off. */
+const LOAD_RETRY_MS = [3_000, 6_000, 12_000];
+/** Saves the server refused before writing anything (it sends Retry-After) are repeated. */
+const SAVE_RETRY_MS = [3_000, 6_000];
 
 export type Persistence = "saved" | "saving" | "unavailable" | "failed" | "conflict";
 export type AdminState = {
@@ -30,6 +34,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let savePromise: Promise<boolean> | null = null;
 let refreshPromise: Promise<boolean> | null = null;
 let listening = false;
+let loadRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let loadRetries = 0;
 let stopListening: (() => void) | null = null;
 const listeners = new Set<() => void>();
 
@@ -122,6 +128,7 @@ export async function refreshAdminData({ discardPending = false } = {}): Promise
       dirty = false;
       conflict = false;
       state = { data: cloud.data, ready: true, persistence: "saved", message: "" };
+      cancelLoadRetry();
       if (discardPending) clearPending();
       emit();
       return true;
@@ -135,6 +142,8 @@ export async function refreshAdminData({ discardPending = false } = {}): Promise
             : "Could not load your records from secure cloud storage. Check your connection, then retry.",
         };
         emit();
+        // A brief upstream stall must not leave Mike on this screen until the next regular check.
+        if (!state.ready) scheduleLoadRetry();
       }
       return false;
     } finally {
@@ -164,6 +173,7 @@ function reconcileNumbers(current: AdminData, canonical: AdminData): AdminData {
 }
 
 async function saveChanges(): Promise<boolean> {
+  let retries = 0;
   while (dirty && state?.ready && revision !== null) {
     const sentMutation = mutation;
     const data = state.data;
@@ -188,7 +198,14 @@ async function saveChanges(): Promise<boolean> {
         emit();
         return false;
       }
+      if (response.status === 503 && response.headers.has("Retry-After") && retries < SAVE_RETRY_MS.length) {
+        // Nothing was written (e.g. Supabase Auth did not answer), so repeating
+        // the save cannot apply it twice. It sends the latest edits.
+        await new Promise(resolve => setTimeout(resolve, SAVE_RETRY_MS[retries++]));
+        continue;
+      }
       if (!response.ok) throw new Error("Cloud storage could not save these changes.");
+      retries = 0;
       const cloud = await cloudResponse(response);
       revision = cloud.revision;
       dirty = sentMutation !== mutation;
@@ -231,6 +248,20 @@ export function flush(): Promise<boolean> {
   return savePromise;
 }
 
+function cancelLoadRetry() {
+  if (loadRetryTimer) clearTimeout(loadRetryTimer);
+  loadRetryTimer = null;
+  loadRetries = 0;
+}
+
+function scheduleLoadRetry() {
+  if (!listening || loadRetryTimer || loadRetries >= LOAD_RETRY_MS.length) return;
+  loadRetryTimer = setTimeout(() => {
+    loadRetryTimer = null;
+    void refreshAdminData();
+  }, LOAD_RETRY_MS[loadRetries++]);
+}
+
 function startListening() {
   if (listening) return;
   listening = true;
@@ -266,6 +297,7 @@ function startListening() {
     window.removeEventListener("beforeunload", leaving);
     document.removeEventListener("visibilitychange", visibility);
     window.clearInterval(interval);
+    cancelLoadRetry();
     listening = false;
     stopListening = null;
   };

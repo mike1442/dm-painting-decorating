@@ -10,6 +10,7 @@ export async function GET() {
   } catch (error) { return failure(error); }
 }
 export async function PUT(request: Request) {
+  let writing = false;
   try {
     const token = await requireAdmin(request);
     const body = await readBody(request);
@@ -21,7 +22,14 @@ export async function PUT(request: Request) {
     const current = await adminRpc(token, "dm_get_data");
     if (!Number.isSafeInteger(current?.revision)) throw new BackendError(503, "response");
     if (current.revision !== body.revision) throw new BackendError(409, "stale");
+    writing = true;
     const result = await adminRpc(token, "dm_save_data", { p_data: data, p_revision: body.revision });
     return json({ ...result, data: normaliseAdminData(result.data, new Date().toISOString()) });
-  } catch (error) { return failure(error); }
+  } catch (error) {
+    const response = failure(error);
+    // Only a failure before the write is safe for the browser to repeat; a failed
+    // write may still have been applied, and repeating it would report a false conflict.
+    if (!writing && response.status === 503) response.headers.set("Retry-After", "3");
+    return response;
+  }
 }
