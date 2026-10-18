@@ -177,7 +177,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await introduction.fill(`TEST saved from another browser ${runId}`, { timeout: 15_000 });
       await waitCloud(observer, baseURL, data => data.quotes.find(record => record.id === quoteId)?.intro === `TEST saved from another browser ${runId}`);
       await privateNavigate(page, `/admin/quotes/${quoteId}`);
-      await expect(page.getByLabel("Introduction", { exact: true })).toHaveValue(`TEST saved from another browser ${runId}`);
+      await expect(page.locator("label.adm-field").filter({ hasText: "Introduction" }).locator("textarea")).toHaveValue(`TEST saved from another browser ${runId}`);
       await layoutFits(page);
       await privateNavigate(observerPage, `/admin/invoices/${invoiceId}`);
       await expect(observerPage.getByLabel("Customer name", { exact: true })).toHaveValue("Bill Gates");
