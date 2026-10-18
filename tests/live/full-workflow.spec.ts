@@ -161,7 +161,19 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       // Fail promptly with the visible page state instead of exhausting the
       // entire test budget and starving the mandatory cleanup of test records.
       const introduction = observerPage.getByLabel("Introduction", { exact: true });
-      await expect(introduction, "The second browser must show an editable quote; check cloud load and session state").toBeVisible({ timeout: 15_000 });
+      try {
+        await expect(introduction, "The second browser must show an editable quote; check cloud load and session state").toBeVisible({ timeout: 15_000 });
+      } catch (error) {
+        // Diagnostics contain only the synthetic test record and UI state, never credentials.
+        const diagnostic = await observerPage.evaluate(() => ({
+          path: location.pathname,
+          headings: [...document.querySelectorAll("h1,h2")].map(node => node.textContent?.trim()).slice(0, 15),
+          fields: [...document.querySelectorAll("input,textarea")].map(node => ({ label: node.closest("label")?.querySelector(".adm-field-label")?.textContent?.trim(), tag: node.tagName })).slice(0, 30),
+          loading: !!document.querySelector(".adm-loading"),
+          missing: document.body.textContent?.includes("could not be found") ?? false,
+        }));
+        throw new Error(`Quote editor failed to render: ${JSON.stringify(diagnostic)}; ${String(error)}`);
+      }
       await introduction.fill(`TEST saved from another browser ${runId}`, { timeout: 15_000 });
       await waitCloud(observer, baseURL, data => data.quotes.find(record => record.id === quoteId)?.intro === `TEST saved from another browser ${runId}`);
       await privateNavigate(page, `/admin/quotes/${quoteId}`);
