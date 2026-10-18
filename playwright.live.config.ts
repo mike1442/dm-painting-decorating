@@ -3,7 +3,7 @@ import { liveEnvironment } from "./tests/live/support/live-environment";
 
 // This is intentionally separate from the anonymous, credential-free CI suite.
 // Fail before launching a browser if the real-workflow prerequisites are absent.
-const { baseURL, isLoopback } = liveEnvironment();
+const { baseURL } = liveEnvironment();
 
 export default defineConfig({
   testDir: "./tests/live",
@@ -36,10 +36,10 @@ export default defineConfig({
     { name: "live-desktop-chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "live-mobile-chromium", use: { ...devices["Pixel 7"] } },
   ],
-  webServer: isLoopback ? {
+  webServer: {
     command: "npm run start -- --hostname 127.0.0.1",
     url: `${baseURL}/login`,
     reuseExistingServer: !process.env.CI,
     timeout: 60_000,
-  } : undefined,
+  },
 });

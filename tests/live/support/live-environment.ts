@@ -1,46 +1,28 @@
 import { expect, type APIRequestContext, type APIResponse, type BrowserContext, type Page } from "@playwright/test";
 
-const approvedPreview = "https://dm-painting-decorating-git-fix-production-admin-mike-b7b4.vercel.app";
+const localOrigin = "http://localhost:3000";
 
-/** Exact preview allowlist protects production even if a caller mistypes a URL. */
+/** Live writes run only against a local build connected to the existing project, never a deployment. */
 export function liveEnvironment() {
   if (process.env.E2E_RUN_LIVE !== "1") {
     throw new Error("Live verification requires explicit E2E_RUN_LIVE=1. No real workflow was verified.");
   }
   const value = process.env.E2E_BASE_URL;
-  if (!value) throw new Error("Set E2E_BASE_URL to the approved PR #6 preview or http://localhost:3000 using the existing Supabase project.");
+  if (!value) throw new Error("Set E2E_BASE_URL to http://localhost:3000, a local build using the existing Supabase project.");
   let url: URL;
   try { url = new URL(value); }
   catch { throw new Error("E2E_BASE_URL must be a valid, approved origin."); }
-  const loopback = url.origin === "http://localhost:3000";
-  if ((!loopback && url.origin !== approvedPreview) || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)) {
-    throw new Error("Live writes are allowed only on the approved PR #6 preview or http://localhost:3000. Production, other local origins and other projects are refused.");
+  if (url.origin !== localOrigin || url.username || url.password || url.search || url.hash || !["", "/"].includes(url.pathname)) {
+    throw new Error("Live writes are allowed only on http://localhost:3000. Production, previews, other local origins and other projects are refused.");
   }
   if (!process.env.E2E_ADMIN_PASSWORD || process.env.E2E_ADMIN_PASSWORD.length < 8) {
     throw new Error("Mike must first activate his confirmed Supabase Auth account and privately provide E2E_ADMIN_PASSWORD. No password is generated and no authenticated workflow was verified.");
   }
-  return { baseURL: url.origin, password: process.env.E2E_ADMIN_PASSWORD, isLoopback: loopback };
+  return { baseURL: url.origin, password: process.env.E2E_ADMIN_PASSWORD };
 }
 
-function previewHeaders(origin: string): Record<string, string> {
-  const token = process.env.E2E_VERCEL_TRUSTED_OIDC_TOKEN;
-  return token && origin === approvedPreview ? { "x-vercel-trusted-oidc-idp-token": token } : {};
-}
-
-/** Never put a Vercel credential in global extraHTTPHeaders. */
-export async function prepareLiveBrowser(context: BrowserContext, origin: string) {
+export async function prepareLiveBrowser(context: BrowserContext) {
   await context.route(/https:\/\/fonts\.(googleapis|gstatic)\.com\//, route => route.abort());
-  if (!Object.keys(previewHeaders(origin)).length) return;
-  await context.route(`${origin}/**`, async route => {
-    // Fetch without following redirects so an access header cannot be forwarded
-    // to Vercel's login page or any other origin. The browser follows the 302.
-    try {
-      const response = await route.fetch({ headers: { ...route.request().headers(), ...previewHeaders(origin) }, maxRedirects: 0 });
-      await route.fulfill({ response });
-    } catch {
-      await route.abort("failed");
-    }
-  });
 }
 
 const UNAVAILABLE_ATTEMPTS = 3;
@@ -65,7 +47,7 @@ export async function liveApi(request: APIRequestContext, origin: string, path: 
     try {
       response = await request.fetch(url.href, {
         method,
-        headers: { Origin: origin, ...previewHeaders(origin) },
+        headers: { Origin: origin },
         ...(data !== undefined ? { data } : {}),
         maxRedirects: 0,
       });

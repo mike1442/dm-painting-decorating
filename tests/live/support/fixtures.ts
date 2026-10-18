@@ -31,7 +31,7 @@ const automated = (record: AdminData[(typeof groups)[number]][number]) =>
 
 export async function readCloud(request: APIRequestContext, origin: string): Promise<Snapshot> {
   const response = await liveApi(request, origin, "/api/admin/data");
-  expect(response.status(), "Authenticated cloud read must succeed; preview access or Supabase Auth may still be blocked").toBe(200);
+  expect(response.status(), "Authenticated cloud read must succeed; Supabase Auth may still be blocked").toBe(200);
   const result = await response.json() as Snapshot;
   expect(Boolean(result.data && groups.every(key => Array.isArray(result.data[key])) && Number.isSafeInteger(result.revision)), "Cloud response must have records and a revision").toBe(true);
   return result;
@@ -166,7 +166,7 @@ async function session(live: Live, device: BrowserContextOptions, browser: Brows
   const context = await browser.newContext(device);
   let failure: unknown;
   try {
-    await prepareLiveBrowser(context, live.baseURL);
+    await prepareLiveBrowser(context);
     const page = await context.newPage();
     watch(name, page, live.baseURL);
     await signIn(page, live.password);
@@ -190,7 +190,7 @@ async function session(live: Live, device: BrowserContextOptions, browser: Brows
 
 type WorkerFixtures = { live: Live; admin: Session; observer: Session; customer: Session; ledger: Ledger; records: Records };
 
-export const test = base.extend<{ deadline: void; diagnostics: void }, WorkerFixtures>({
+export const test = base.extend<{ diagnostics: void }, WorkerFixtures>({
   live: [async ({}, use, workerInfo) => {
     const { baseURL, password } = liveEnvironment();
     const isMobile = workerInfo.project.use.isMobile === true;
@@ -209,7 +209,7 @@ export const test = base.extend<{ deadline: void; diagnostics: void }, WorkerFix
   customer: [async ({ browser, live }, use) => {
     const context = await browser.newContext(live.device);
     try {
-      await prepareLiveBrowser(context, live.baseURL);
+      await prepareLiveBrowser(context);
       await use({ context, page: await context.newPage() });
     } finally {
       const admin = (await context.cookies(live.baseURL).catch(() => [])).some(cookie => [ACCESS_COOKIE, REFRESH_COOKIE].includes(cookie.name));
@@ -278,17 +278,6 @@ export const test = base.extend<{ deadline: void; diagnostics: void }, WorkerFix
     expect(saved.data.settings.nextQuoteNumber).toBe(before.data.settings.nextQuoteNumber);
     await use(records);
   }, { scope: "worker", timeout: 30_000 }],
-
-  // A protected preview's access credential has a short fixed lifetime. Fail a
-  // step before it starts if it could outlive that credential, so the worker's
-  // cleanup still runs while the preview remains reachable.
-  deadline: [async ({}, use, testInfo) => {
-    const deadline = Number(process.env.E2E_LIVE_DEADLINE || 0);
-    if (deadline && Date.now() + testInfo.timeout > deadline) {
-      throw new Error("BLOCKED: The preview access credential would expire before this step and its cleanup could finish. Remaining steps were not started.");
-    }
-    await use();
-  }, { auto: true }],
 
   // Traces and DOM snapshots are disabled for privacy, so a failed step reports
   // a sanitised summary of each signed-in page instead.

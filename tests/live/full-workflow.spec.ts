@@ -324,7 +324,7 @@ test.describe("authenticated admin workflow", () => {
     const quoteLink = await createCustomerLink(admin.page);
     const quoteCustomer = await browser.newContext(live.otherDevice);
     try {
-      await prepareLiveBrowser(quoteCustomer, live.baseURL);
+      await prepareLiveBrowser(quoteCustomer);
       const quotePage = await quoteCustomer.newPage();
       const response = await customerNavigate(quotePage, quoteLink);
       expect(response?.status()).toBe(200);
@@ -398,8 +398,8 @@ test.describe("session revocation", () => {
     const replay = await browser.newContext({ baseURL: live.baseURL });
     let failure: unknown;
     try {
-      await prepareLiveBrowser(context, live.baseURL);
-      await prepareLiveBrowser(replay, live.baseURL);
+      await prepareLiveBrowser(context);
+      await prepareLiveBrowser(replay);
       const page = await context.newPage();
       await signIn(page, live.password);
       await replay.addCookies((await context.cookies(live.baseURL)).filter(cookie => sessionCookies.includes(cookie.name)));

@@ -180,7 +180,7 @@ async function main() {
       E2E_BASE_URL: "http://localhost:3000",
       E2E_ADMIN_PASSWORD: password,
     };
-    for (const name of ["E2E_VERCEL_TRUSTED_OIDC_TOKEN", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]) delete env[name];
+    for (const name of ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]) delete env[name];
 
     // Prove the application's pinned hostname reaches this emulator, not the hosted project.
     const marker = await new Promise(resolve => {

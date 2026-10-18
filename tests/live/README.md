@@ -6,12 +6,9 @@ Prerequisites:
 - The application must use that existing project's `NEXT_PUBLIC_SUPABASE_URL` and public publishable/anon key. Key selection prefers `SUPABASE_PUBLISHABLE_KEY`, then the existing Vercel integration's `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, then the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Configure one supported name. Never provide a service-role or secret key.
 - For GitHub Actions, add Mike's privately supplied password as the repository Actions secret `E2E_ADMIN_PASSWORD`. The separate live verification job checks this prerequisite before launching any browser; a missing secret is reported as blocked. Never paste it in a PR, workflow input, command line, issue or test output.
 - For a local run, inject `E2E_ADMIN_PASSWORD` through your password manager or a private shell prompt; do not put its literal value in shell history. Install the lockfile dependencies with Node 24 and install Chromium using Playwright.
-- Use a local production build connected to the existing Supabase project at exactly `http://localhost:3000`, or the exact PR #6 preview origin `https://dm-painting-decorating-git-fix-production-admin-mike-b7b4.vercel.app`. Other local ports, IPv4/IPv6 literal origins, production URLs and other Vercel projects are refused. Do not change preview or production protection settings to run these tests.
-- A protected preview may additionally need a short-lived, correctly scoped `E2E_VERCEL_TRUSTED_OIDC_TOKEN` injected privately. It is attached only to requests for the exact approved preview origin; redirects never forward it. A connection authorised only for another Vercel account cannot grant access to Mike's preview.
+- Use a local production build connected to the existing Supabase project at exactly `http://localhost:3000`. Deployments (production or preview), other local ports, IPv4/IPv6 literal origins and other projects are refused. Do not change Vercel protection settings to run these tests.
 
 The Actions workflow first executes `scripts/verify-supabase-login.mjs`, using the same private password and public project key directly with Auth. It prints only fixed stage/status/allowlisted error-code summaries, confirms Mike's identity and membership, and revokes its own test session. A rejected password stops before installation or browser attempts. A passing preflight does not replace the UI session tests.
-
-After the loopback job passes, the protected-preview job runs `scripts/verify-live-preview.mjs` with read-only GitHub commit-status permissions and GitHub OIDC issuance. The runner verifies the exact event/workflow and unchanged reviewed branch head plus Mike-project deployment success before/after each viewport. It validates and masks a fresh signed OIDC token per project, checks `/login` through Vercel protection before sending any application password, and supplies credentials only to that project's browser process. GitHub API/issuance/runtime credentials are excluded from the child environment. The Vercel Preview-only Trusted Sources append rule is documented in `docs/production-admin.md`; missing access fails closed and must not be resolved by disabling deployment protection.
 
 For a local build, provide the public Supabase configuration through the existing environment mechanism and run `npm run build`. With the private password already injected, run:
 
@@ -20,9 +17,9 @@ E2E_RUN_LIVE=1 E2E_BASE_URL=http://localhost:3000 \
   ./node_modules/.bin/playwright test --config playwright.live.config.ts
 ```
 
-For the approved preview, change only `E2E_BASE_URL` to that exact origin. The configuration exits with an explicit error before launching a browser if opt-in, the private password or the approved target is missing. A passing anonymous suite is not a substitute for this run.
+The configuration exits with an explicit error before launching a browser if opt-in, the private password or the approved target is missing. A passing anonymous suite is not a substitute for this run.
 
-For `http://localhost:3000` the config starts the built application automatically, bound to `127.0.0.1` on port 3000. An existing server may be reused locally; CI always starts its own server. Preview targets use the deployed application and never start a local server.
+The config starts the built application automatically, bound to `127.0.0.1` on port 3000. An existing server may be reused locally; CI always starts its own server.
 
 Run the same suite against the isolated backend first (`npm run test:e2e:isolated`, see `tests/isolated/README.md`); CI does this before any live run.
 
@@ -31,8 +28,6 @@ The suite runs on desktop Chromium and Pixel 7, one project at a time. Each proj
 Hosted Supabase Auth occasionally leaves a request unanswered for about ten seconds (a read and its retry). The application recovers by itself: admin pages show a "Reconnecting…" page that refreshes after 3 seconds, a failed first data load is retried after 3, 6 and 12 seconds, and a save the server refused before writing (it sends `Retry-After`) is repeated after 3 and 6 seconds. The suite allows for exactly that and no more: assertions wait 20 seconds, each admin navigation waits up to 30 seconds for the page to load its cloud records, and the suite's own API and customer-link requests are repeated up to twice after such a 503 or 5xx. A write is repeated only when the response says nothing was written. Every repeat is logged with its path, so upstream stalls stay visible in the run output.
 
 Sessions and records are worker fixtures (`support/fixtures.ts`). Each project signs in a primary and a second browser once, plus one more browser for the sign-out test. Playwright tears these fixtures down with their own time budget after the last step passes, fails or times out: the record ledger removes every record created by the run (by ID, and anything titled `TEST <run id> `), confirms they are gone, and then every browser's Supabase session is revoked through `/api/auth/logout` and its context closed. Cleanup problems fail the run with fixed messages without hiding the original failure. When a run starts, records left by an interrupted earlier run — titled `TEST <12 hex characters> ` and, for documents, marked `isTest` with a `TEST-` number, and older than 20 minutes — are removed and only their count is reported. Mike's own Settings test invoice has no run marker and is never touched.
-
-For the protected preview, `E2E_LIVE_DEADLINE` (set by `scripts/verify-live-preview.mjs`) stops new steps from starting once they could outlive the short-lived preview credential, leaving cleanup time. A global timeout is deliberately not used: Playwright skips fixture teardown when it fires.
 
 Each project independently verifies:
 
