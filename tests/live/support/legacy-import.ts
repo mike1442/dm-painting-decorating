@@ -116,6 +116,6 @@ export async function verifyLegacyBrowserImport({ page, observerPage, context, b
   await expect(observerPage.getByLabel("Customer name", { exact: true })).toHaveValue(imported.customer.name);
   await privateNavigate(observerPage, `/admin/quotes/${existing.id}`);
   expect(await observerPage.getByLabel("Job title", { exact: true }).inputValue() === existing.title, "The second browser must retain the cloud quote rather than the stale browser duplicate").toBe(true);
-  expect(await observerPage.getByLabel("Introduction", { exact: true }).inputValue() === existing.intro, "Import must retain the existing cloud introduction across browsers").toBe(true);
+  expect(await observerPage.locator("label.adm-field").filter({ hasText: "Introduction" }).locator("textarea").inputValue() === existing.intro, "Import must retain the existing cloud introduction across browsers").toBe(true);
   await sourceIsUnchanged();
 }
