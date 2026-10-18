@@ -61,8 +61,16 @@ test("the ChatGPT connection refuses anonymous callers, forged tokens and non-Ch
   const metadata = await request.get("/.well-known/oauth-authorization-server");
   expect(metadata.status()).toBe(200);
   const server = await metadata.json();
-  const origin = new URL(metadata.url()).origin;
+  // Next's local server can normalize 127.0.0.1 to localhost in Request.url.
+  // Permit only those HTTP loopback aliases; public deployment hosts stay exact.
+  const normalizeLocalOrigin = (value: string) => {
+    const url = new URL(value);
+    if (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)) url.hostname = "localhost";
+    return url.origin;
+  };
+  const origin = new URL(server.issuer).origin;
   expect(server.issuer).toBe(origin);
+  expect(normalizeLocalOrigin(origin)).toBe(normalizeLocalOrigin(metadata.url()));
   expect(server.code_challenge_methods_supported).toEqual(["S256"]);
   expect(server.registration_endpoint).toBe(`${origin}/api/oauth/register`);
   for (const path of ["", "/api/mcp"]) {
@@ -74,23 +82,25 @@ test("the ChatGPT connection refuses anonymous callers, forged tokens and non-Ch
   const headers = { Accept: "application/json, text/event-stream" };
   const anonymous = await request.post("/api/mcp", { data: tools, headers });
   const getProbe = await request.get("/api/mcp", { headers });
-  // Public metadata remains available when the runtime secret disables access.
-  if (anonymous.status() === 503) {
-    expect(getProbe.status()).toBe(503);
-    expect((await request.post("/api/oauth/register", { data: { redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"] } })).status()).toBe(503);
-    return;
-  }
   expect(anonymous.status()).toBe(401);
   expect(getProbe.status()).toBe(401);
   expect(getProbe.headers()["www-authenticate"]).toBe(anonymous.headers()["www-authenticate"]);
   expect(anonymous.headers()["www-authenticate"]).toMatch(/^Bearer realm="D&M", resource_metadata="https?:\/\/[^"]+\/\.well-known\/oauth-protected-resource\/api\/mcp"/);
+  expect(anonymous.headers()["www-authenticate"]).toContain(`resource_metadata="${origin}/.well-known/oauth-protected-resource/api/mcp"`);
   expect(anonymous.headers()["cache-control"]).toContain("no-store");
+
+  // Discovery and its challenge stay public even when registration is disabled.
+  const invalidRegistration = await request.post("/api/oauth/register", { data: { redirect_uris: ["https://unrelated.example/callback"] } });
+  if (invalidRegistration.status() === 503) {
+    expect((await request.post("/api/mcp", { data: tools, headers: { ...headers, Authorization: "Bearer dmat_forged-token-value" } })).status()).toBe(503);
+    return;
+  }
+  expect(invalidRegistration.status()).toBe(400);
 
   const forged = await request.post("/api/mcp", { data: tools, headers: { ...headers, Authorization: "Bearer dmat_forged-token-value" } });
   expect(forged.status()).toBe(401);
   expect(forged.headers()["www-authenticate"]).toContain('error="invalid_token"');
   expect((await request.post("/api/chatgpt/actions/list_quotes", { data: {} })).status()).toBe(401);
-  expect((await request.post("/api/oauth/register", { data: { redirect_uris: ["https://unrelated.example/callback"] } })).status()).toBe(400);
   expect((await request.post("/api/oauth/token", { form: { grant_type: "authorization_code", code: "dmac_forged", client_id: "dmcl_forged" } })).status()).toBe(401);
   const settings = await request.get("/api/admin/chatgpt");
   expect(settings.status(), "Connection details are for the signed-in administrator only").toBe(401);

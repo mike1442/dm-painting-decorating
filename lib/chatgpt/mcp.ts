@@ -100,6 +100,9 @@ async function handleMessage(message: Message, grant: Grant): Promise<object | n
 }
 
 export async function handleMcpPost(request: Request): Promise<Response> {
+  // Anonymous clients must be able to discover OAuth before a grant exists,
+  // including when the deployment still needs its private signing secret.
+  if (!request.headers.has("authorization")) return unauthorised(request, MCP_PATH, false);
   try { integrationKeys(); } catch { return integrationDisabledResponse(); }
   const grant = bearerGrant(request);
   if (!grant) return unauthorised(request, MCP_PATH, request.headers.has("authorization"));
@@ -136,6 +139,7 @@ export async function handleMcpPost(request: Request): Promise<Response> {
 
 /** Discovery probes need the same OAuth challenge as an anonymous POST. */
 export function handleMcpGet(request: Request): Response {
+  if (!request.headers.has("authorization")) return unauthorised(request, MCP_PATH, false);
   try { integrationKeys(); } catch { return integrationDisabledResponse(); }
   if (!bearerGrant(request)) return unauthorised(request, MCP_PATH, request.headers.has("authorization"));
   return handleMcpOther();

@@ -3,7 +3,7 @@ name: OAuth discovery
 on:
   pull_request:
   push:
-    branches: [fix/chatgpt-oauth-discovery, main]
+    branches: [main]
   workflow_dispatch:
 
 permissions:

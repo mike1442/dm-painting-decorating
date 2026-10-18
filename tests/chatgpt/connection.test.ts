@@ -66,7 +66,13 @@ test("public discovery stays available while an absent or weak secret disables a
     }
     assert.equal((await register()).response.status, 503);
     assert.equal((await rpc("dmat_x", { jsonrpc: "2.0", id: 1, method: "ping" })).status, 503);
-    assert.equal(handleMcpGet(new Request(MCP)).status, 503);
+    const anonymousPost = await rpc(null, { jsonrpc: "2.0", id: 1, method: "initialize" });
+    const anonymousGet = handleMcpGet(new Request(MCP));
+    assert.equal(anonymousPost.status, 401);
+    assert.equal(anonymousGet.status, 401);
+    assert.match(anonymousPost.headers.get("www-authenticate")!, /resource_metadata="https:\/\/www\.dmpaintingdecorating\.co\.uk\/\.well-known\/oauth-protected-resource\/api\/mcp"/);
+    assert.equal(anonymousGet.headers.get("www-authenticate"), anonymousPost.headers.get("www-authenticate"));
+    assert.equal(handleMcpGet(new Request(MCP, { headers: { authorization: "Bearer dmat_forged" } })).status, 503);
     assert.equal((await handleAuthorizeGet(new Request(`${ORIGIN}/oauth/authorize`))).status, 503);
   }
 });

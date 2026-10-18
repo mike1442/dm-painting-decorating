@@ -98,7 +98,8 @@ const probes = [
 const results = await Promise.all(probes.map(([label, url, options]) => probe(label, url, options)));
 const [getMcp, postMcp, scopedResource, rootResource, authorizationServer] = results;
 
-verify("GET /api/mcp", [401, 405].includes(getMcp?.status), "unauthenticated GET must return HTTP 401 or HTTP 405");
+verify("GET /api/mcp", getMcp?.status === 401, "unauthenticated GET must return HTTP 401");
+verify("GET /api/mcp", getMcp?.challenge === postMcp?.challenge && /^Bearer\b/i.test(getMcp?.challenge ?? ""), "GET must advertise the same Bearer challenge as POST");
 verify("POST /api/mcp", postMcp?.status === 401, "unauthenticated initialize must return HTTP 401");
 verify("POST /api/mcp", /^Bearer\b/i.test(postMcp?.challenge ?? ""), "HTTP 401 must contain a Bearer WWW-Authenticate challenge");
 metadata("Scoped resource metadata", scopedResource, mcpUrl);
