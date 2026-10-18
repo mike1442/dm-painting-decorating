@@ -15,8 +15,13 @@ concurrency:
 
 jobs:
   pg17:
+    name: PostgreSQL 17 (${{ matrix.scenario }})
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [existing, fresh]
     services:
       postgres:
         image: postgres:17
@@ -49,8 +54,19 @@ jobs:
             sudo apt-get install --yes --no-install-recommends postgresql-client
           fi
       - name: Bootstrap isolated test database
+        if: matrix.scenario == 'existing'
         run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/bootstrap.sql
+      - name: Bootstrap isolated Auth fixtures for fresh application schema
+        if: matrix.scenario == 'fresh'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/auth-fixture.sql
+      - name: Create fresh application base schema
+        if: matrix.scenario == 'fresh'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=supabase/base-schema.sql
       - name: Apply production schema to isolated test database
         run: psql -X --set=ON_ERROR_STOP=1 --file=supabase/production-admin.sql
       - name: Verify database security boundaries
+        if: matrix.scenario == 'existing'
         run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/security.sql
+      - name: Verify empty-schema installation and first use
+        if: matrix.scenario == 'fresh'
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/fresh-schema.sql

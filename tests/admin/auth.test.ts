@@ -10,7 +10,7 @@ for (const origin of ["https://attacker.example", "null", "https://dm-painting-d
 assert.equal(sameOrigin(new Request(url)), false);
 assert.equal(sameOrigin(new Request(url, { headers: { origin: new URL(url).origin, "sec-fetch-site": "cross-site" } })), false);
 
-process.env.NEXT_PUBLIC_SUPABASE_URL = "https://kqjbgvjgsvbjflumorjr.supabase.co";
+process.env.NEXT_PUBLIC_SUPABASE_URL = "https://fdctgtncawolrapwwevm.supabase.co";
 process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test";
 const originalFetch = globalThis.fetch;
 let calls = 0;

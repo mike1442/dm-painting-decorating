@@ -10,7 +10,7 @@ permissions:
 
 concurrency:
   # All live runs share the same existing database and must run serially.
-  group: live-admin-kqjbgvjgsvbjflumorjr
+  group: live-admin-fdctgtncawolrapwwevm
   cancel-in-progress: false
 
 jobs:
@@ -28,9 +28,9 @@ jobs:
     timeout-minutes: 15
     env:
       NEXT_TELEMETRY_DISABLED: "1"
-      NEXT_PUBLIC_SUPABASE_URL: https://kqjbgvjgsvbjflumorjr.supabase.co
+      NEXT_PUBLIC_SUPABASE_URL: https://fdctgtncawolrapwwevm.supabase.co
       # Public client key only. Auth, guarded RPCs and RLS protect all records.
-      SUPABASE_PUBLISHABLE_KEY: sb_publishable_1ID4jYUodJD7eE9fHVkR1w_1g7dp5qa
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_6VBwZ_uNQJsUQ6ygEWtUWg_T_LlGL3K
       E2E_RUN_LIVE: "1"
       E2E_BASE_URL: http://localhost:3000
     steps:

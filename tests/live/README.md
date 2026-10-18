@@ -1,4 +1,4 @@
-These are real workflow tests against the existing Supabase project `kqjbgvjgsvbjflumorjr`. They do not mock sign-in or persistence. They are outside the anonymous suite's test directory and cannot run through `npm run test:e2e`.
+These are real workflow tests against the user-selected existing Supabase destination `fdctgtncawolrapwwevm`. The original source `kqjbgvjgsvbjflumorjr` is retained during the explicitly authorised move; these tests must not write to it. They do not mock sign-in or persistence. They are outside the anonymous suite's test directory and cannot run through `npm run test:e2e`.
 
 Prerequisites:
 

@@ -24,7 +24,7 @@ test("real middleware preserves sessions on upstream rate limits and fails close
 
   const oldUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const oldKey = process.env.SUPABASE_PUBLISHABLE_KEY;
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://kqjbgvjgsvbjflumorjr.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://fdctgtncawolrapwwevm.supabase.co";
   process.env.SUPABASE_PUBLISHABLE_KEY = "sb_publishable_unit_test";
   context.after(() => {
     if (oldUrl === undefined) delete process.env.NEXT_PUBLIC_SUPABASE_URL;

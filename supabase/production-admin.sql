@@ -1,4 +1,5 @@
--- Reviewed additive upgrade for the EXISTING kqjbgvjgsvbjflumorjr project.
+-- Reviewed additive upgrade for the D&M application tables.
+-- An empty, explicitly authorised existing destination needs base-schema.sql first.
 -- This is migration source, not a fabricated Supabase CLI migration filename.
 -- The Supabase CLI is unavailable in the authoring environment. Apply once
 -- through the authenticated migration tool and record its actual version.

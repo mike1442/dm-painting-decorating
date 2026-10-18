@@ -12,7 +12,7 @@ test("Supabase transport accepts the existing Vercel publishable key name with s
       else process.env[name] = value;
     }
   });
-  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://kqjbgvjgsvbjflumorjr.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://fdctgtncawolrapwwevm.supabase.co";
   const fixtureJwt = (role: string) => [
     Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url"),
     Buffer.from(JSON.stringify({ role })).toString("base64url"),
@@ -21,7 +21,7 @@ test("Supabase transport accepts the existing Vercel publishable key name with s
   const legacyAnon = fixtureJwt("anon");
   const requestedKeys: (string | null)[] = [];
   context.mock.method(globalThis, "fetch", async (input: unknown, init?: RequestInit) => {
-    assert.equal(String(input), "https://kqjbgvjgsvbjflumorjr.supabase.co/rest/v1/rpc/dm_get_shared_document");
+    assert.equal(String(input), "https://fdctgtncawolrapwwevm.supabase.co/rest/v1/rpc/dm_get_shared_document");
     requestedKeys.push(new Headers(init?.headers).get("apikey"));
     return Response.json(null);
   });

@@ -1,12 +1,12 @@
 # Production admin operations
 
-The admin uses the existing Supabase project `kqjbgvjgsvbjflumorjr`. It never needs a service-role key. Runtime configuration is `NEXT_PUBLIC_SUPABASE_URL` and a public API key. Key selection prefers the server-only `SUPABASE_PUBLISHABLE_KEY`, then `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` used by existing Vercel integrations, then the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Configure one supported name; every source accepts only a publishable/anon key and rejects service-role or secret keys.
+The admin targets the user-selected existing Supabase project `fdctgtncawolrapwwevm` (`mike1442's Project`). The user explicitly authorised copying the existing setup into this project after the original project's dashboard account was inaccessible. The original project `kqjbgvjgsvbjflumorjr` is retained unchanged during preparation and verification. Runtime configuration is `NEXT_PUBLIC_SUPABASE_URL` and a public API key. Key selection prefers the server-only `SUPABASE_PUBLISHABLE_KEY`, then `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, then the legacy `NEXT_PUBLIC_SUPABASE_ANON_KEY`. Every source accepts only a publishable/anon key and rejects service-role or secret keys.
 
 ## Administrator access
 
 Create Mike's account in the existing project's Authentication → Users screen with the exact email `mike@dmpaintingdecorating.co.uk`. Mike must choose the password privately. Confirm the email using the account setup flow or the authenticated Supabase project administrator's user-creation screen. Never commit passwords or send them in chat.
 
-The existing project belongs to the Supabase organisation named `D&B Painting&Decorating`. If the dashboard reports no access and offers to create an organisation, the dashboard account needs access to this existing organisation. Its owner must grant access; creating a new organisation/project would not connect to the existing backend.
+Create the account in the selected destination's [Authentication → Users](https://supabase.com/dashboard/project/fdctgtncawolrapwwevm/auth/users) screen. It belongs to the organisation named `D@M painting`. The original source belongs to `D&B Painting&Decorating`; application Auth users and dashboard organisation membership are separate. No Auth users or passwords were fabricated or copied. Existing browser records still require the reviewed import flow on their original device.
 
 The database migration enrols only this confirmed account. Requests verify the current user with Supabase Auth and then check membership. Cookies are HttpOnly, Secure in production, SameSite=Lax and host-only. Every modifying endpoint checks the exact browser Origin. All private responses disable caching. Logout clears cookies and revokes the current Supabase session.
 
