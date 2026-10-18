@@ -39,12 +39,16 @@ jobs:
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
         run: |
           node -e 'if (!process.env.E2E_ADMIN_PASSWORD || process.env.E2E_ADMIN_PASSWORD.length < 8) { console.error("BLOCKED: Confirm Mike in Supabase Auth, then configure the private repository Actions secret E2E_ADMIN_PASSWORD. No authenticated workflow has run."); process.exit(1); }'
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v7.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "24"
+      - name: Verify private credentials directly with Supabase
+        env:
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: node scripts/verify-supabase-login.mjs
       - name: Install locked dependencies
         run: npm ci --no-fund
       - name: Build the reviewed application
@@ -56,3 +60,42 @@ jobs:
           E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
         run: npm run test:e2e:live
       # Never upload live traces, DOM snapshots, cookies or other artifacts.
+
+  protected-preview:
+    needs: real-supabase
+    if: >-
+      success() &&
+      ((github.event_name == 'pull_request' &&
+        github.event.pull_request.number == 6 &&
+        github.event.pull_request.head.ref == 'fix/production-admin' &&
+        github.event.pull_request.head.repo.full_name == github.repository) ||
+       (github.event_name == 'workflow_dispatch' &&
+        github.ref == 'refs/heads/fix/production-admin'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      statuses: read
+      id-token: write
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      E2E_BASE_URL: https://dm-painting-decorating-git-fix-production-admin-mike-b7b4.vercel.app
+      E2E_EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      - name: Install locked dependencies
+        run: npm ci --no-fund
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Verify the reviewed protected preview with fresh scoped OIDC identities
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          E2E_ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
+        run: node scripts/verify-live-preview.mjs
+      # No build/server, long-lived bypass, debug mode, or artifact upload.

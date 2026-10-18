@@ -6,6 +6,7 @@ import { invoiceTotals } from "../../lib/admin/money";
 import { createQuote } from "../../lib/admin/operations";
 import type { AdminData } from "../../lib/admin/types";
 import { liveApi, liveEnvironment, prepareLiveBrowser, privateNavigate } from "./support/live-environment";
+import { verifyLegacyBrowserImport } from "./support/legacy-import";
 
 // Outside the anonymous suite's testDir. The dedicated config validates real
 // credentials and the preview allowlist before it launches any browser.
@@ -168,6 +169,12 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await layoutFits(observerPage);
     });
 
+    await test.step("Review and import legacy browser records without replacing current cloud records", async () => {
+      await verifyLegacyBrowserImport({ page, observerPage, context, baseURL, readCloud, waitCloud, owned, runId, existingQuoteId: quoteId });
+      await privateNavigate(page, `/admin/invoices/${invoiceId}`);
+      await privateNavigate(observerPage, `/admin/invoices/${invoiceId}`);
+    });
+
     await test.step("Edit invoice calculations through the UI and persist optional VAT and payments", async () => {
       await privateNavigate(page, `/admin/invoices/${invoiceId}`);
       const works = page.locator("section.adm-card").filter({ has: page.getByRole("heading", { name: "Itemised works", exact: true }) });
@@ -261,6 +268,75 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await expect(customerPage.locator(".adm-top, .adm-tabs")).toHaveCount(0);
     });
 
+    await test.step("Record a partial payment and verify the £1,180 remainder across browsers and the same customer link", async () => {
+      await page.getByRole("button", { name: "Record a payment or deposit", exact: true }).click();
+      const payment = page.locator(".adm-payment");
+      await expect(payment).toHaveCount(1);
+      await payment.getByLabel("Amount", { exact: true }).fill("500");
+      await payment.getByLabel("Method", { exact: true }).selectOption("cash");
+      await payment.getByLabel("Shown as", { exact: true }).fill("TEST deposit received");
+      await waitCloud(context, baseURL, data => {
+        const invoice = data.invoices.find(record => record.id === invoiceId)!;
+        const totals = invoiceTotals(invoice);
+        return invoice.isTest === true && invoice.status === "draft" && invoice.payments.length === 1 &&
+          invoice.payments[0].amount === 500 && invoice.payments[0].method === "cash" &&
+          invoice.payments[0].label === "TEST deposit received" && totals.totalPence === 168000 &&
+          totals.paidPence === 50000 && totals.balancePence === 118000;
+      });
+      await expect(page.locator(".adm-bottom-bar strong")).toHaveText("£1,180.00");
+      await privateNavigate(observerPage, `/admin/invoices/${invoiceId}`);
+      await expect(observerPage.locator(".adm-payment").getByLabel("Amount", { exact: true })).toHaveValue("500.00");
+      await expect(observerPage.locator(".adm-payment").getByLabel("Method", { exact: true })).toHaveValue("cash");
+      await expect(observerPage.locator(".adm-bottom-bar strong")).toHaveText("£1,180.00");
+
+      expect((await privateNavigate(customerPage, invoiceLink))?.status()).toBe(200);
+      await expect(customerPage.locator(".dmdoc-total-grand strong")).toHaveText("£1,680.00");
+      await expect(customerPage.locator(".dmdoc-total-minus")).toContainText("TEST deposit received");
+      await expect(customerPage.locator(".dmdoc-total-minus strong")).toHaveText("−£500.00");
+      await expect(customerPage.locator(".dmdoc-total-balance strong")).toHaveText("£1,180.00");
+      await expect(customerPage.getByText("Test document · Not issued · No payment required", { exact: true })).toBeVisible();
+      await layoutFits(observerPage);
+      await layoutFits(customerPage);
+      expect((await liveApi(customer.request, baseURL, "/api/admin/data")).status()).toBe(401);
+    });
+
+    await test.step("Print the customer's test invoice and generate a real PDF entirely in memory", async () => {
+      // Exercise the actual customer button without opening a native OS print
+      // dialog. Restore window.print before testing Chromium's real PDF renderer.
+      const printControl = await customerPage.evaluateHandle(() => {
+        const original = window.print;
+        let calls = 0;
+        window.print = () => { calls += 1; };
+        return { calls: () => calls, restore: () => { window.print = original; } };
+      });
+      try {
+        await customerPage.getByRole("button", { name: "Print / Save PDF", exact: true }).click();
+        expect(await printControl.evaluate(control => control.calls()), "The customer print button must invoke browser printing").toBe(1);
+      } finally {
+        await printControl.evaluate(control => control.restore());
+        await printControl.dispose();
+      }
+
+      await customerPage.emulateMedia({ media: "print" });
+      try {
+        await expect(customerPage.locator(".dm-shared-toolbar")).toBeHidden();
+        await expect(customerPage.getByRole("heading", { name: "Invoice", exact: true })).toBeVisible();
+        await expect(customerPage.getByText("Bill Gates", { exact: true })).toBeVisible();
+        await expect(customerPage.getByText("Test document · Not issued · No payment required", { exact: true })).toBeVisible();
+        await expect(customerPage.locator(".dmdoc-total-balance strong")).toHaveText("£1,180.00");
+        await expect(customerPage.locator(".adm-top, .adm-tabs, .dmdoc-pay")).toHaveCount(0);
+        await customerPage.evaluate(() => document.fonts.ready.then(() => undefined));
+        // Deliberately omit path and testInfo.attach: customer PDFs and bearer
+        // links must never enter CI files, reports or uploaded artifacts.
+        const pdf = await customerPage.pdf({ format: "A4", preferCSSPageSize: true, printBackground: true, displayHeaderFooter: false });
+        expect(pdf.byteLength > 1000 && pdf.subarray(0, 5).toString("ascii") === "%PDF-" && pdf.subarray(-32).toString("ascii").includes("%%EOF"), "Chromium must render a complete, nonempty customer PDF").toBe(true);
+      } finally {
+        await customerPage.emulateMedia({ media: "screen" });
+      }
+      await expect(customerPage.getByRole("button", { name: "Print / Save PDF", exact: true })).toBeVisible();
+      expect((await customer.cookies(baseURL)).some(cookie => [ACCESS_COOKIE, REFRESH_COOKIE].includes(cookie.name)), "Printing a document must not create an admin session").toBe(false);
+    });
+
     await test.step("Verify the separate quote link, token replacement and revocation", async () => {
       await privateNavigate(page, `/admin/quotes/${quoteId}`);
       const quoteLink = await createCustomerLink(page);
@@ -291,7 +367,11 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await page.getByRole("button", { name: "Mark paid", exact: true }).click();
       await waitCloud(context, baseURL, data => {
         const invoice = data.invoices.find(record => record.id === invoiceId)!;
-        return invoice.status === "draft" && invoice.isTest === true && invoiceTotals(invoice).balancePence === 0;
+        const totals = invoiceTotals(invoice);
+        return invoice.status === "draft" && invoice.isTest === true && invoice.payments.length === 2 &&
+          invoice.payments.some(payment => payment.amount === 500 && payment.label === "TEST deposit received") &&
+          invoice.payments.some(payment => payment.amount === 1180 && payment.label === "Balance received") &&
+          totals.totalPence === 168000 && totals.paidPence === 168000 && totals.balancePence === 0;
       });
       await privateNavigate(observerPage, `/admin/invoices/${invoiceId}`);
       await expect(observerPage.locator(".adm-page-sub .adm-chip")).toHaveText("Paid");
@@ -349,7 +429,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await expect(page).toHaveURL(/\/login$/);
     });
 
-    testInfo.annotations.push({ type: "verification", description: "Verified real Supabase Auth, cross-browser storage, test-only documents, customer isolation/revocation, session refresh/logout, and both viewport layouts. No invoice was issued or emailed." });
+    testInfo.annotations.push({ type: "verification", description: "Verified real Supabase Auth, cross-browser storage, test-only documents, partial payments and remaining-balance settlement, customer print/PDF rendering and isolation/revocation, session refresh/logout, and both viewport layouts. No invoice was issued or emailed; PDF bytes remained in memory." });
   } finally {
     // On a partial failure, discover only descendants identifiable by this run's
     // unique quote ID and title. Never restore an old complete-data snapshot.
