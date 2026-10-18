@@ -52,7 +52,7 @@ async function signIn(page: Page, password: string) {
   const response = await privateNavigate(page, "/login");
   expect(response?.status(), "The login page must be reachable before real workflow verification").toBe(200);
   await expect(page.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
-  await page.getByLabel("Email", { exact: true }).fill(ADMIN_EMAIL);
+  await page.locator("label.adm-field").filter({ hasText: "Email" }).locator("input").fill(ADMIN_EMAIL);
   // Do not use locator.fill(password): its failure call log can print the value.
   // Recordings are also disabled by the dedicated live config.
   await page.evaluate(value => {
@@ -157,7 +157,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
     await test.step("Verify a second independently authenticated browser sees quotes and invoices", async () => {
       await signIn(observerPage, password);
       await privateNavigate(observerPage, `/admin/quotes/${quoteId}`);
-      await expect(observerPage.getByLabel("Job title", { exact: true })).toHaveValue(quoteTitle);
+      await expect(observerPage.locator("label.adm-field").filter({ hasText: "Job title" }).locator("input")).toHaveValue(quoteTitle);
       // Fail promptly with the visible page state instead of exhausting the
       // entire test budget and starving the mandatory cleanup of test records.
       const introduction = observerPage.locator("label.adm-field").filter({ hasText: "Introduction" }).locator("textarea");
@@ -180,8 +180,8 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await expect(page.locator("label.adm-field").filter({ hasText: "Introduction" }).locator("textarea")).toHaveValue(`TEST saved from another browser ${runId}`);
       await layoutFits(page);
       await privateNavigate(observerPage, `/admin/invoices/${invoiceId}`);
-      await expect(observerPage.getByLabel("Customer name", { exact: true })).toHaveValue("Bill Gates");
-      await expect(observerPage.getByLabel("Job title", { exact: true })).toHaveValue(invoiceTitle);
+      await expect(observerPage.locator("label.adm-field").filter({ hasText: "Customer name" }).locator("input")).toHaveValue("Bill Gates");
+      await expect(observerPage.locator("label.adm-field").filter({ hasText: "Job title" }).locator("input")).toHaveValue(invoiceTitle);
       await layoutFits(observerPage);
     });
 
@@ -194,7 +194,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
     await test.step("Edit invoice calculations through the UI and persist optional VAT and payments", async () => {
       await privateNavigate(page, `/admin/invoices/${invoiceId}`);
       const works = page.locator("section.adm-card").filter({ has: page.getByRole("heading", { name: "Itemised works", exact: true }) });
-      await expect(works.getByLabel("Qty", { exact: true }).first()).toHaveValue("3");
+      await expect(works.locator("label.adm-field").filter({ hasText: "Qty" }).locator("input").first()).toHaveValue("3");
       await expect(works.locator("label.adm-field").filter({ hasText: "Price each" }).locator("input").first()).toHaveValue("250.00");
       const materials = page.locator("section.adm-card").filter({ has: page.getByRole("heading", { name: "Materials", exact: true }) });
       await materials.locator("label.adm-field").filter({ hasText: "Price each" }).locator("input").fill("181");
@@ -213,7 +213,7 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await page.getByRole("link", { name: "Book into diary", exact: true }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("heading", { name: "New booking", exact: true })).toBeVisible();
-      await expect(dialog.getByLabel("Customer", { exact: true })).toHaveValue("Bill Gates");
+      await expect(dialog.locator("label.adm-field").filter({ hasText: "Customer" }).locator("select")).toHaveValue("Bill Gates");
       await dialog.locator("label.adm-field").filter({ hasText: "Job description" }).locator("input, textarea").fill(`TEST ${runId} Wall painting booking`);
       await dialog.locator("label.adm-field").filter({ hasText: "Linked quote" }).locator("select").selectOption(quoteId);
       const date = await dialog.locator("label.adm-field").filter({ hasText: "First day" }).locator("input").inputValue();
