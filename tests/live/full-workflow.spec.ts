@@ -225,9 +225,9 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       owned.add(bookingId);
       await privateNavigate(observerPage, `/admin/diary?date=${date}`);
       await observerPage.locator(".adm-day-panel").getByRole("button").filter({ hasText: `TEST ${runId} Wall painting booking` }).click();
-      await expect(observerPage.getByRole("dialog").getByLabel("Linked invoice", { exact: true })).toHaveValue(invoiceId);
-      await expect(observerPage.getByRole("dialog").getByLabel("Linked quote", { exact: true })).toHaveValue(quoteId);
-      await observerPage.getByRole("dialog").getByLabel("Notes", { exact: true }).fill(`TEST updated on another device ${runId}`);
+      await expect(observerPage.getByRole("dialog").locator("label.adm-field").filter({ hasText: "Linked invoice" }).locator("select")).toHaveValue(invoiceId);
+      await expect(observerPage.getByRole("dialog").locator("label.adm-field").filter({ hasText: "Linked quote" }).locator("select")).toHaveValue(quoteId);
+      await observerPage.getByRole("dialog").locator("label.adm-field").filter({ hasText: "Notes" }).locator("textarea").fill(`TEST updated on another device ${runId}`);
       await observerPage.getByRole("button", { name: "Save changes", exact: true }).click();
       await waitCloud(observer, baseURL, data => data.bookings.find(record => record.id === bookingId)?.notes === `TEST updated on another device ${runId}`);
       await page.reload();
@@ -288,9 +288,9 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await page.getByRole("button", { name: "Record a payment or deposit", exact: true }).click();
       const payment = page.locator(".adm-payment");
       await expect(payment).toHaveCount(1);
-      await payment.getByLabel("Amount", { exact: true }).fill("500");
-      await payment.getByLabel("Method", { exact: true }).selectOption("cash");
-      await payment.getByLabel("Shown as", { exact: true }).fill("TEST deposit received");
+      await payment.locator("label.adm-field").filter({ hasText: "Amount" }).locator("input").fill("500");
+      await payment.locator("label.adm-field").filter({ hasText: "Method" }).locator("select").selectOption("cash");
+      await payment.locator("label.adm-field").filter({ hasText: "Shown as" }).locator("input").fill("TEST deposit received");
       await waitCloud(context, baseURL, data => {
         const invoice = data.invoices.find(record => record.id === invoiceId)!;
         const totals = invoiceTotals(invoice);
@@ -301,8 +301,8 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       });
       await expect(page.locator(".adm-bottom-bar strong")).toHaveText("£1,180.00");
       await privateNavigate(observerPage, `/admin/invoices/${invoiceId}`);
-      await expect(observerPage.locator(".adm-payment").getByLabel("Amount", { exact: true })).toHaveValue("500.00");
-      await expect(observerPage.locator(".adm-payment").getByLabel("Method", { exact: true })).toHaveValue("cash");
+      await expect(observerPage.locator(".adm-payment").locator("label.adm-field").filter({ hasText: "Amount" }).locator("input")).toHaveValue("500.00");
+      await expect(observerPage.locator(".adm-payment").locator("label.adm-field").filter({ hasText: "Method" }).locator("select")).toHaveValue("cash");
       await expect(observerPage.locator(".adm-bottom-bar strong")).toHaveText("£1,180.00");
 
       expect((await privateNavigate(customerPage, invoiceLink))?.status()).toBe(200);
