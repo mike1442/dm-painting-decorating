@@ -88,7 +88,7 @@ async function runPreflight(scenario: Scenario, overrides: Record<string, string
     await Promise.all([writeFile(preload, networkMock), writeFile(requestLog, "")]);
     // Deliberately start from a literal environment. Parent Actions secrets,
     // proxy credentials, NODE_OPTIONS and live account configuration stay out.
-    const env = {
+    const env: NodeJS.ProcessEnv = {
       E2E_RUN_LIVE: "1",
       NEXT_PUBLIC_SUPABASE_URL: origin,
       SUPABASE_PUBLISHABLE_KEY: fakePublicKey,
@@ -96,6 +96,7 @@ async function runPreflight(scenario: Scenario, overrides: Record<string, string
       ...overrides,
       TEST_PREFLIGHT_SCENARIO: scenario,
       TEST_PREFLIGHT_REQUEST_LOG: requestLog,
+      NODE_ENV: "test",
     };
     const stdoutPath = join(directory, "stdout.txt");
     const stderrPath = join(directory, "stderr.txt");
