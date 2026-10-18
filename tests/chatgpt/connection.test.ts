@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import test from "node:test";
 import { ALL_SCOPES, CUSTOM_GPT_CLIENT_ID } from "../../lib/chatgpt/config.ts";
-import { handleAction, handleMcpOther, handleMcpPost, openApiDocument } from "../../lib/chatgpt/mcp.ts";
+import { handleAction, handleMcpGet, handleMcpOther, handleMcpPost, openApiDocument } from "../../lib/chatgpt/mcp.ts";
 import {
   authorizationServerMetadata, bearerGrant, clientSecret, handleAuthorizeGet, handleAuthorizePost, handleRegister, handleRevoke, handleToken, protectedResourceMetadata,
 } from "../../lib/chatgpt/oauth.ts";
@@ -53,12 +53,20 @@ async function connect({ allowDelete = true } = {}) {
 const rpc = (token: string | null, body: unknown, headers: Record<string, string> = {}) =>
   handleMcpPost(json(MCP, body, { accept: "application/json, text/event-stream", ...(token ? { authorization: `Bearer ${token}` } : {}), ...headers }));
 
-test("the connection stays off until the deployment holds a strong secret", async context => {
+test("public discovery stays available while an absent or weak secret disables access", async context => {
   for (const secret of [null, "too-short", "a".repeat(40)]) {
     configure(context, secret);
-    assert.equal(authorizationServerMetadata(new Request(`${ORIGIN}/.well-known/oauth-authorization-server`)).status, 503);
+    const metadata = authorizationServerMetadata(new Request(`${ORIGIN}/.well-known/oauth-authorization-server`));
+    assert.equal(metadata.status, 200);
+    assert.equal((await metadata.json()).issuer, ORIGIN);
+    for (const path of ["", "/api/mcp"]) {
+      const resource = protectedResourceMetadata(new Request(`${ORIGIN}/.well-known/oauth-protected-resource${path}`), path);
+      assert.equal(resource.status, 200);
+      assert.equal((await resource.json()).resource, MCP);
+    }
     assert.equal((await register()).response.status, 503);
     assert.equal((await rpc("dmat_x", { jsonrpc: "2.0", id: 1, method: "ping" })).status, 503);
+    assert.equal(handleMcpGet(new Request(MCP)).status, 503);
     assert.equal((await handleAuthorizeGet(new Request(`${ORIGIN}/oauth/authorize`))).status, 503);
   }
 });
@@ -78,6 +86,12 @@ test("discovery describes the protected MCP server and its authorization server"
   const challenge = await rpc(null, { jsonrpc: "2.0", id: 1, method: "initialize" });
   assert.equal(challenge.status, 401);
   assert.match(challenge.headers.get("www-authenticate")!, /^Bearer realm="D&M", resource_metadata="https:\/\/www\.dmpaintingdecorating\.co\.uk\/\.well-known\/oauth-protected-resource\/api\/mcp", scope="dm:read dm:write dm:delete"$/);
+  const getChallenge = handleMcpGet(new Request(MCP));
+  assert.equal(getChallenge.status, 401);
+  assert.equal(getChallenge.headers.get("www-authenticate"), challenge.headers.get("www-authenticate"));
+  const forgedGet = handleMcpGet(new Request(MCP, { headers: { authorization: "Bearer dmat_forged" } }));
+  assert.equal(forgedGet.status, 401);
+  assert.match(forgedGet.headers.get("www-authenticate")!, /error="invalid_token"/);
 });
 
 test("only ChatGPT's own https redirect addresses can be registered", async context => {
@@ -277,6 +291,7 @@ test("the MCP endpoint speaks the protocol ChatGPT uses and runs the tools as Mi
   assert.equal((await (await call({ jsonrpc: "2.0", id: 7, method: "resources/list" })).json()).error.code, -32601);
   assert.equal((await (await handleMcpPost(new Request(MCP, { method: "POST", headers: { authorization: `Bearer ${tokens.access_token}` }, body: "{" }))).json()).error.code, -32700);
   assert.equal(handleMcpOther().status, 405);
+  assert.equal(handleMcpGet(new Request(MCP, { headers: { authorization: `Bearer ${tokens.access_token}` } })).status, 405);
 
   // Settings → Disconnect ends every other session, including this connection.
   const browser = supabase.signIn();
@@ -284,3 +299,4 @@ test("the MCP endpoint speaks the protocol ChatGPT uses and runs the tools as Mi
   const after = await call({ jsonrpc: "2.0", id: 8, method: "tools/call", params: { name: "list_quotes", arguments: {} } });
   assert.equal(after.status, 401, "ChatGPT is told to reauthorise; it does not see a silent failure");
 });
+

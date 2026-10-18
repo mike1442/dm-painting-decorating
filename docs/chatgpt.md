@@ -10,9 +10,9 @@ The connection is private to Mike. ChatGPT only gets access after Mike signs in 
 
 ## 1. One-time website setting
 
-Whoever manages the Vercel project does this once. Until it is done, the connection stays switched off and the ChatGPT addresses answer "not configured".
+Whoever manages the Vercel project does this once. Until it is done, registration, sign-in and MCP access answer "not configured". The public OAuth discovery documents remain available so ChatGPT can discover the settings automatically.
 
-1. Generate a long random value, for example with `openssl rand -base64 48`, or a 64-character password from a password manager.
+1. Generate a long random value with `openssl rand -base64 48`, or a 64-character password from a password manager. The value must contain at least 32 characters and at least 10 distinct characters; a repeated character or a placeholder is rejected. Keep the generated value private and enter it directly in Vercel; never put it in chat, logs or GitHub.
 2. In Vercel → project `dm-painting-decorating` → Settings → Environment Variables, add `DM_CHATGPT_SECRET` with that value for **Production**. Mark it **Sensitive**.
 3. Redeploy production, for example by merging this change.
 
@@ -161,7 +161,9 @@ The automated suite cannot sign in to Mike's real ChatGPT account. After deploym
 
 ## Troubleshooting
 
-- **"The ChatGPT connection is not configured"**: `DM_CHATGPT_SECRET` is missing or too short in Vercel Production, or production was not redeployed after adding it.
+- **"The ChatGPT connection is not configured"**: the running Vercel Production deployment does not have a valid `DM_CHATGPT_SECRET`. It needs at least 32 characters and at least 10 distinct characters. Check that the variable belongs to the project serving the domain, is enabled for Production, and that production was redeployed after adding it. Verify only the presence and validity of the variable; never print its value.
+- **"Couldn't discover OAuth settings"**: the public addresses `/.well-known/oauth-authorization-server`, `/.well-known/oauth-protected-resource` and `/.well-known/oauth-protected-resource/api/mcp` must each return HTTP 200 JSON on `https://www.dmpaintingdecorating.co.uk`. The authorization-server issuer must be `https://www.dmpaintingdecorating.co.uk`, matching the protected-resource document's `authorization_servers`. A configured `/api/mcp` answers an anonymous GET or POST with HTTP 401 and a `WWW-Authenticate` header pointing to its resource metadata. A 503 there means runtime configuration still needs fixing even if discovery succeeds.
 - **ChatGPT says it cannot connect or keeps asking to sign in**: use the exact address `https://www.dmpaintingdecorating.co.uk/api/mcp` (with `www`). If you pressed Disconnect in Settings or the secret changed, reconnect the app in ChatGPT.
 - **"That password was not accepted"**: use the D&M admin password (the one for `/login`), not the ChatGPT password.
 - **A customer link stopped working**: a newer link replaced it, or access was revoked. Ask ChatGPT for a new link.
+

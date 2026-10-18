@@ -134,6 +134,13 @@ export async function handleMcpPost(request: Request): Promise<Response> {
   }
 }
 
+/** Discovery probes need the same OAuth challenge as an anonymous POST. */
+export function handleMcpGet(request: Request): Response {
+  try { integrationKeys(); } catch { return integrationDisabledResponse(); }
+  if (!bearerGrant(request)) return unauthorised(request, MCP_PATH, request.headers.has("authorization"));
+  return handleMcpOther();
+}
+
 /** No server-initiated stream is offered; sessions are not used. */
 export function handleMcpOther(): Response {
   return new Response(null, { status: 405, headers: { Allow: "POST", "Cache-Control": "no-store" } });
@@ -197,3 +204,4 @@ export async function handleAction(request: Request, name: string): Promise<Resp
 }
 
 export const toolNames = (scopes: Scope[] = ALL_SCOPES) => toolsFor(scopes).map(tool => tool.name);
+

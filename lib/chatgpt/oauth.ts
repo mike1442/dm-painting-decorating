@@ -142,7 +142,8 @@ export async function handleRegister(request: Request): Promise<Response> {
 /* Metadata --------------------------------------------------------------- */
 
 export function authorizationServerMetadata(request: Request): Response {
-  try { integrationKeys(); } catch { return disabled(); }
+  // Discovery is public configuration. A missing signing secret must not hide
+  // these URLs; registration, approval and token issuance remain disabled.
   const origin = originOf(request);
   const methods = ["none", "client_secret_post", "client_secret_basic"];
   return jsonResponse({
@@ -165,7 +166,6 @@ export function authorizationServerMetadata(request: Request): Response {
 
 /** RFC 9728 metadata for /api/mcp (also served at the bare well-known path) and the Custom GPT API. */
 export function protectedResourceMetadata(request: Request, suffix: string): Response {
-  try { integrationKeys(); } catch { return disabled(); }
   const origin = originOf(request);
   const path = suffix === "" ? MCP_PATH : suffix;
   if (![MCP_PATH, ACTIONS_PATH].includes(path)) return jsonResponse({ error: "not_found" }, 404);
@@ -432,3 +432,4 @@ export function unauthorised(request: Request, resourcePath: string, presented: 
 }
 
 export { disabled as integrationDisabledResponse };
+
