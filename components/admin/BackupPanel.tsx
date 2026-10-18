@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { Field } from "./fields";
 import { Icon } from "./Icon";
 import { Card, Sheet } from "./ui";
 import { backupFileName, createBackup, parseBackup } from "@/lib/admin/backup";
@@ -118,7 +119,7 @@ export function BackupPanel({ data }: { data: AdminData }) {
         </div>}
         {recovery && <div className="adm-stack">
           <p>An earlier visit left unsaved edits in this tab. Review or export them before closing this tab.</p>
-          {recoveries.length > 1 && <label className="adm-field"><span className="adm-field-label">Recovered visit</span><select className="adm-input adm-select" value={recoveryIndex} onChange={event => setRecoveryIndex(Number(event.target.value))}>{recoveries.map((item, index) => <option key={index} value={index}>{item.ok && item.exportedAt ? new Date(item.exportedAt).toLocaleString("en-GB") : "Unreadable recovery"}{index === 0 ? " (latest)" : ""}</option>)}</select></label>}
+          {recoveries.length > 1 && <Field label="Recovered visit">{control => <select {...control} className="adm-input adm-select" value={recoveryIndex} onChange={event => setRecoveryIndex(Number(event.target.value))}>{recoveries.map((item, index) => <option key={index} value={index}>{item.ok && item.exportedAt ? new Date(item.exportedAt).toLocaleString("en-GB") : "Unreadable recovery"}{index === 0 ? " (latest)" : ""}</option>)}</select>}</Field>}
           <div className="adm-actions">
             <button type="button" className="adm-btn adm-btn-ghost" disabled={blocked} onClick={() => review(recovery)}>Review recovered edits</button>
             {recovery.ok && <button type="button" className="adm-btn adm-btn-ghost" onClick={() => {

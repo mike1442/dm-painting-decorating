@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { flush } from "@/lib/admin/store";
+import { Field } from "./fields";
 import { Icon } from "./Icon";
 import "./ShareControls.css";
 
@@ -102,10 +103,9 @@ export function ShareControls({ id }: { id: string }) {
       </div>
       {url && (
         <div className="adm-share-link">
-          <label className="adm-field">
-            <span className="adm-field-label">Customer link</span>
-            <input ref={input} className="adm-input" value={url} readOnly onFocus={event => event.target.select()} />
-          </label>
+          <Field label="Customer link">
+            {control => <input {...control} ref={input} className="adm-input" value={url} readOnly onFocus={event => event.target.select()} />}
+          </Field>
           <button type="button" className="adm-btn adm-btn-ghost" onClick={() => void copy()}>
             <Icon name="copy" size={16} /> Copy
           </button>

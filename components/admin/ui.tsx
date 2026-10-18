@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import type { Persistence } from "@/lib/admin/store";
@@ -36,11 +36,13 @@ export function Card({ title, aside, children, id, tone }: {
   id?: string;
   tone?: "quiet" | "warn";
 }) {
+  // A titled card is a named region, so each editor section can be found by its heading.
+  const headingId = useId();
   return (
-    <section className={"adm-card" + (tone ? ` adm-card-${tone}` : "")} id={id}>
+    <section className={"adm-card" + (tone ? ` adm-card-${tone}` : "")} id={id} aria-labelledby={title ? headingId : undefined}>
       {(title || aside) && (
         <div className="adm-card-head">
-          {title && <h2>{title}</h2>}
+          {title && <h2 id={headingId}>{title}</h2>}
           {aside}
         </div>
       )}

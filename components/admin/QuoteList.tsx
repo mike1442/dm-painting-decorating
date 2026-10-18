@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Field } from "./fields";
 import { Icon } from "./Icon";
 import { Empty, Loading, PageHead, Sheet, StateChip } from "./ui";
 import { chatGptInstructions, parseQuoteJson } from "@/lib/admin/chatgpt";
@@ -57,7 +58,7 @@ export function QuoteList() {
     <div className="adm-page">
       <PageHead
         title="Quotes"
-        subtitle={`${state.data.quotes.length} on this device`}
+        subtitle={state.data.quotes.length === 1 ? "1 quote" : `${state.data.quotes.length} quotes`}
         action={
           <button type="button" className="adm-btn" onClick={() => setSheet("choose")}>
             <Icon name="plus" size={18} /> New quote
@@ -136,12 +137,11 @@ export function QuoteList() {
             </button>
           </li>
           <li>Ask ChatGPT for the quote JSON and copy its reply.</li>
-          <li>Paste the reply below. Nothing is sent anywhere; it stays on this device.</li>
+          <li>Paste the reply below. It is checked here and saved only when you create the draft quote.</li>
         </ol>
-        <label className="adm-field">
-          <span className="adm-field-label">ChatGPT reply</span>
-          <textarea className="adm-input adm-textarea adm-code" rows={8} value={pasted} onChange={e => setPasted(e.target.value)} placeholder='{ "customer": { … }, "title": "…", "works": [ … ] }' />
-        </label>
+        <Field label="ChatGPT reply">
+          {control => <textarea {...control} className="adm-input adm-textarea adm-code" rows={8} value={pasted} onChange={e => setPasted(e.target.value)} placeholder='{ "customer": { … }, "title": "…", "works": [ … ] }' />}
+        </Field>
         {parsed && !parsed.ok && <p className="adm-inline-error">{parsed.error}</p>}
         {parsed?.ok && (
           <div className="adm-parse-ok">

@@ -119,7 +119,7 @@ export function InvoiceEditor({ id }: { id: string }) {
         )}
         <div className="adm-payments">
           {invoice.payments.map((payment, index) => (
-            <div className="adm-payment" key={payment.id}>
+            <div className="adm-payment" key={payment.id} role="group" aria-label={`Payment ${index + 1}`}>
               <DateField label="Date" value={payment.date} onChange={date => setPayment(payment.id, { date })} />
               <NumberField label="Amount" prefix="£" decimals={2} placeholder="0.00" value={payment.amount} onChange={amount => setPayment(payment.id, { amount })} />
               <SelectField label="Method" value={payment.method} options={methodOptions} onChange={method => setPayment(payment.id, { method })} />
