@@ -1,13 +1,17 @@
+import { randomBytes } from "node:crypto";
 import { defineConfig, devices } from "@playwright/test";
 import { liveEnvironment } from "./tests/live/support/live-environment";
 
 // This is intentionally separate from the anonymous, credential-free CI suite.
 // Fail before launching a browser if the real-workflow prerequisites are absent.
 const { baseURL } = liveEnvironment();
+// The local server under test seals ChatGPT tokens with a fresh random secret
+// for each run; it never needs or sees the deployment's own secret.
+process.env.DM_CHATGPT_SECRET ||= randomBytes(32).toString("base64url");
 
 export default defineConfig({
   testDir: "./tests/live",
-  testMatch: "full-workflow.spec.ts",
+  testMatch: ["chatgpt-connection.spec.ts", "full-workflow.spec.ts"],
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,

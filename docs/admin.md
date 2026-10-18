@@ -10,6 +10,8 @@ Create a customer link in the editor or preview after saving. Customers can view
 
 Original `dm-admin:v1` browser records remain untouched. Use Settings → Storage on the original browser to review and import missing records. Cloud records with matching IDs are preserved; business settings require an explicit import choice. Export a backup before importing. Recovery copies protect failed edits but do not replace permanent database storage.
 
+Mike can also create and manage all of this by talking to ChatGPT; see [ChatGPT secretary](chatgpt.md).
+
 See [Production operations](production-admin.md) for required configuration, Mike's account setup, migration, verification and release gates.
 
 ## Source and checks
@@ -20,6 +22,7 @@ See [Production operations](production-admin.md) for required configuration, Mik
 - `lib/server/`: Supabase REST transport, session authorization and API error handling.
 - `app/api/admin/`: independently authenticated storage and sharing endpoints.
 - `app/d/[token]/`: separate public customer document renderer.
+- `lib/chatgpt/`: Mike's private ChatGPT connection (OAuth, MCP and tools over the same operations).
 - `supabase/`: database migration and security verification.
 
 Run `npm test`, `npm run lint`, `npm run typecheck`, `npm run build` and `npm run test:e2e`. The CI workflow also audits runtime dependencies. Live login, cross-device persistence and public/revoked customer links must be verified on the intended deployment before production release.

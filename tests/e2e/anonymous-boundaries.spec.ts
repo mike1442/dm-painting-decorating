@@ -56,3 +56,43 @@ test("off-origin requests cannot initiate an admin sign-in", async ({ request })
   expect(response.status()).toBe(403);
   expect(response.headers()["set-cookie"]).toBeUndefined();
 });
+
+test("the ChatGPT connection refuses anonymous callers, forged tokens and non-ChatGPT apps", async ({ request }) => {
+  const metadata = await request.get("/.well-known/oauth-authorization-server");
+  const tools = { jsonrpc: "2.0", id: 1, method: "tools/list" };
+  const headers = { Accept: "application/json, text/event-stream" };
+  const anonymous = await request.post("/api/mcp", { data: tools, headers });
+  // A deployment without DM_CHATGPT_SECRET keeps the whole connection switched off.
+  if (metadata.status() === 503) {
+    expect(anonymous.status()).toBe(503);
+    expect((await request.post("/api/oauth/register", { data: { redirect_uris: ["https://chatgpt.com/connector_platform_oauth_redirect"] } })).status()).toBe(503);
+    return;
+  }
+  expect(metadata.status()).toBe(200);
+  expect((await metadata.json()).code_challenge_methods_supported).toEqual(["S256"]);
+  expect(anonymous.status()).toBe(401);
+  expect(anonymous.headers()["www-authenticate"]).toMatch(/^Bearer realm="D&M", resource_metadata="https?:\/\/[^"]+\/\.well-known\/oauth-protected-resource\/api\/mcp"/);
+  expect(anonymous.headers()["cache-control"]).toContain("no-store");
+
+  const forged = await request.post("/api/mcp", { data: tools, headers: { ...headers, Authorization: "Bearer dmat_forged-token-value" } });
+  expect(forged.status()).toBe(401);
+  expect(forged.headers()["www-authenticate"]).toContain('error="invalid_token"');
+  expect((await request.post("/api/chatgpt/actions/list_quotes", { data: {} })).status()).toBe(401);
+  expect((await request.post("/api/oauth/register", { data: { redirect_uris: ["https://unrelated.example/callback"] } })).status()).toBe(400);
+  expect((await request.post("/api/oauth/token", { form: { grant_type: "authorization_code", code: "dmac_forged", client_id: "dmcl_forged" } })).status()).toBe(401);
+  const settings = await request.get("/api/admin/chatgpt");
+  expect(settings.status(), "Connection details are for the signed-in administrator only").toBe(401);
+});
+
+test("the ChatGPT consent page cannot be framed and never returns an unknown app to ChatGPT", async ({ page }) => {
+  const response = await page.goto("/oauth/authorize?response_type=code&client_id=dmcl_forged&redirect_uri=https%3A%2F%2Fchatgpt.com%2Fconnector_platform_oauth_redirect&code_challenge_method=S256");
+  test.skip(response?.status() === 503, "This deployment has not switched the ChatGPT connection on.");
+  expect(response?.status()).toBe(400);
+  expect(new URL(page.url()).pathname).toBe("/oauth/authorize");
+  await expect(page.getByRole("heading", { name: "This connection request is not valid" })).toBeVisible();
+  await expect(page.locator("input[type=password]")).toHaveCount(0);
+  expect(response?.headers()["x-frame-options"]).toBe("DENY");
+  expect(response?.headers()["content-security-policy"]).toContain("frame-ancestors 'none'");
+  expect(response?.headers()["x-robots-tag"]).toContain("noindex");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});

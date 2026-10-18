@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BackupPanel } from "./BackupPanel";
+import { ChatGptPanel } from "./ChatGptPanel";
 import { AddressFields, LinesField, NumberField, TextArea, TextField, Toggle } from "./fields";
 import { Card, Loading, PageHead, SaveStatus } from "./ui";
 import { formatDocNumber } from "@/lib/admin/factories";
@@ -21,6 +22,8 @@ export function SettingsPanel() {
   return (
     <div className="adm-page adm-editor">
       <PageHead title="Settings" subtitle={<SaveStatus persistence={state.persistence} />} />
+
+      <ChatGptPanel />
 
       <BackupPanel data={state.data} />
 

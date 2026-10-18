@@ -31,6 +31,8 @@ Sessions and records are worker fixtures (`support/fixtures.ts`). Each project s
 
 Each project independently verifies:
 
+- Mike's ChatGPT connection (`chatgpt-connection.spec.ts`, which runs first). The official MCP SDK client stands in for ChatGPT, completing discovery, dynamic registration, PKCE and the token exchange to ChatGPT's real redirect address; nothing reaches the real ChatGPT. Mike approves in a fresh browser after a wrong password is refused. ChatGPT creates the Paul Finn £518 quote as a TEST document, and a repeated call makes no duplicate. An anonymous browser opens the customer link, the replaced link fails, and revocation and deletion happen only after confirmation. Finally the connection is refreshed and revoked, and the endpoint refuses it. See `docs/chatgpt.md`.
+
 - Real UI sign-in; HttpOnly, Secure, SameSite cookies; reload persistence; refreshing a session after removing its expired access cookie and after Supabase rejects a stale access JWT (403 `bad_jwt`); logout; and rejection of replayed logged-out cookies.
 - Clearly labelled `TEST-`/`isTest: true` drafts, including Bill Gates's 20m² wall with two painters at 3 × £250 and £180 materials, totalling £1,680 before VAT. Customer details have no real delivery address. Nothing is issued, emailed or sent to a customer.
 - UI edits and VAT calculation; a £500 test deposit and £1,180 remainder in storage, another browser and the same customer link; marking the remainder paid while retaining both payment entries.

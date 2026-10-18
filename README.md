@@ -27,3 +27,7 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 `/admin` holds private Quotes, Invoices and Diary tools. Records use authenticated Supabase storage, with safe imports for existing browser records, revision conflict protection and revocable customer links. See [docs/admin.md](docs/admin.md).
 
+## ChatGPT
+
+Mike can run quotes, invoices and the diary by talking to his own ChatGPT, through a private, OAuth-protected connection at `/api/mcp` on the same backend. Switch it on by adding `DM_CHATGPT_SECRET` in Vercel. See [docs/chatgpt.md](docs/chatgpt.md) for setup, Mike's connection steps and the security model.
+

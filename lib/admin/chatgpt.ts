@@ -83,7 +83,7 @@ Rules:
 const POSTCODE = /^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i;
 
 /** Accepts a structured address or a single string such as "12 Road, Town, WA4 0AA". */
-function customerFrom(v: unknown): Customer {
+export function customerFrom(v: unknown): Customer {
   const raw = obj(v);
   if (typeof raw.address !== "string") return normaliseCustomer(raw);
   const parts = raw.address.split(/\r?\n|,/).map(s => s.trim()).filter(Boolean);
@@ -93,7 +93,7 @@ function customerFrom(v: unknown): Customer {
   return normaliseCustomer({ ...raw, address: { line1, line2: rest.join(", "), town, postcode } });
 }
 
-function linesFrom(v: unknown): Omit<LineItem, "id">[] {
+export function linesFrom(v: unknown): Omit<LineItem, "id">[] {
   return list(v)
     .slice(0, MAX_LINES)
     .map(item => {
