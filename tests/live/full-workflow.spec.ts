@@ -195,11 +195,11 @@ test("real admin workflow persists across browsers and exposes only an explicitl
       await privateNavigate(page, `/admin/invoices/${invoiceId}`);
       const works = page.locator("section.adm-card").filter({ has: page.getByRole("heading", { name: "Itemised works", exact: true }) });
       await expect(works.getByLabel("Qty", { exact: true }).first()).toHaveValue("3");
-      await expect(works.getByLabel("Price each", { exact: true }).first()).toHaveValue("250.00");
+      await expect(works.locator("label.adm-field").filter({ hasText: "Price each" }).locator("input").first()).toHaveValue("250.00");
       const materials = page.locator("section.adm-card").filter({ has: page.getByRole("heading", { name: "Materials", exact: true }) });
-      await materials.getByLabel("Price each", { exact: true }).fill("181");
+      await materials.locator("label.adm-field").filter({ hasText: "Price each" }).locator("input").fill("181");
       await waitCloud(context, baseURL, data => invoiceTotals(data.invoices.find(record => record.id === invoiceId)!).totalPence === 168100);
-      await materials.getByLabel("Price each", { exact: true }).fill("180");
+      await materials.locator("label.adm-field").filter({ hasText: "Price each" }).locator("input").fill("180");
       await page.getByRole("switch", { name: /Charge VAT/ }).check();
       await waitCloud(context, baseURL, data => invoiceTotals(data.invoices.find(record => record.id === invoiceId)!).totalPence === 201600);
       await page.getByRole("switch", { name: /Charge VAT/ }).uncheck();
