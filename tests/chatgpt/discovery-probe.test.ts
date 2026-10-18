@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawnSync, type SpawnSyncOptionsWithStringEncoding } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import test from "node:test";
 
 const scriptUrl = new URL("../../scripts/verify-oauth-discovery.mjs", import.meta.url).href;
@@ -49,10 +49,10 @@ globalThis.fetch = async (input, init = {}) => {
 await import(${JSON.stringify(scriptUrl)});
 `;
   // A literal environment keeps real credentials and NODE_OPTIONS out of children.
-  const options: SpawnSyncOptionsWithStringEncoding = {
-    env: { BASE_URL: origin }, encoding: "utf8", timeout: 10_000,
-  };
-  const result = spawnSync(process.execPath, ["--input-type=module", "-e", source], options);
+  const env: NodeJS.ProcessEnv = { BASE_URL: origin, NODE_ENV: "test" };
+  const result = spawnSync(process.execPath, ["--input-type=module", "-e", source], {
+    env, encoding: "utf8", timeout: 10_000,
+  });
   assert.ifError(result.error);
   assert.equal(result.signal, null);
   assert.ok(!`${result.stdout}${result.stderr}`.includes(clientId), "client ID must stay out of output");
