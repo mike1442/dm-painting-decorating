@@ -11,7 +11,7 @@ process.env.DM_CHATGPT_SECRET ||= randomBytes(32).toString("base64url");
 
 export default defineConfig({
   testDir: "./tests/live",
-  testMatch: ["chatgpt-connection.spec.ts", "full-workflow.spec.ts"],
+  testMatch: ["chatgpt-connection.spec.ts", "full-workflow.spec.ts", "photos.spec.ts"],
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
@@ -35,6 +35,9 @@ export default defineConfig({
     screenshot: "off",
     video: "off",
     serviceWorkers: "block",
+    // Only the isolated run (tests/isolated) serves photo URLs over a throwaway
+    // certificate; live runs load them from the real project with full TLS checks.
+    ignoreHTTPSErrors: process.env.E2E_ISOLATED_SUPABASE === "1",
   },
   projects: [
     { name: "live-desktop-chromium", use: { ...devices["Desktop Chrome"] } },

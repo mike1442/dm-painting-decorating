@@ -25,7 +25,9 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 ## Admin
 
-`/admin` holds private Quotes, Invoices and Diary tools. Records use authenticated Supabase storage, with safe imports for existing browser records, revision conflict protection and revocable customer links. See [docs/admin.md](docs/admin.md).
+`/admin` holds private Quotes, Invoices, Diary and Photos tools. Records use authenticated Supabase storage, with safe imports for existing browser records, revision conflict protection and revocable customer links. See [docs/admin.md](docs/admin.md).
+
+Photos uploaded in the admin are converted to WebP and stored in Supabase Storage with permanent public URLs for website pages. Switch it on once by applying `supabase/site-photos.sql`. See [docs/photos.md](docs/photos.md).
 
 ## ChatGPT
 

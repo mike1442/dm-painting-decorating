@@ -39,7 +39,7 @@
 .adm-alert a{margin-left:auto;font-weight:700;text-decoration:underline}
 
 /* Bottom tabs (mobile) */
-.adm-tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(3,1fr);height:calc(var(--a-tabs) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:rgba(12,20,26,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--a-line)}
+.adm-tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;display:grid;grid-template-columns:repeat(4,1fr);height:calc(var(--a-tabs) + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom);background:rgba(12,20,26,.94);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-top:1px solid var(--a-line)}
 .adm-tabs a{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;color:var(--a-faint);font-size:11px;font-weight:600;letter-spacing:.02em}
 .adm-tabs a.is-active{color:var(--a-teal)}
 .adm-is-detail .adm-tabs{display:none}
@@ -294,6 +294,32 @@
 .adm-facts dd{margin:2px 0 0;font:600 16px/1.3 Manrope,sans-serif}
 .adm-warn-text{color:var(--a-amber)}
 
+/* Photos */
+.adm-sr-only{position:absolute!important;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.adm-photo-notice{margin-bottom:14px}
+.adm-photo-filters{margin-bottom:14px}
+.adm-photo-grid{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.adm-photo-grid>li{min-width:0}
+.adm-photo{display:flex;flex-direction:column;height:100%;border-radius:var(--a-radius);background:var(--a-card);border:1px solid var(--a-line);overflow:hidden}
+.adm-photo-thumb{display:block;width:100%;padding:0;border:0;background:var(--a-field);aspect-ratio:4/3;overflow:hidden}
+.adm-photo-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.adm-photo-body{flex:1;display:flex;flex-direction:column;gap:3px;min-width:0;padding:10px 12px 0}
+.adm-photo-body strong{font:600 14px/1.3 Manrope,sans-serif;letter-spacing:-.01em;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.adm-photo-body span{font-size:12px;color:var(--a-muted)}
+.adm-photo-actions{display:flex;align-items:center;gap:2px;padding:8px 6px 8px 10px}
+.adm-photo-actions .adm-btn{flex:1;min-width:0;min-height:44px;padding:0 8px}
+.adm-photo-large{display:block;width:100%;height:auto;max-height:32dvh;object-fit:contain;border-radius:12px;background:var(--a-field)}
+.adm-photo-address{display:flex;flex-direction:column;gap:10px;padding:12px;border-radius:12px;background:var(--a-teal-wash)}
+.adm-photo-address .adm-input{font-size:13px}
+.adm-uploads{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+.adm-upload{display:grid;grid-template-columns:76px minmax(0,1fr);gap:12px;padding:12px;border-radius:14px;background:var(--a-field);border:1px solid var(--a-line)}
+.adm-upload .adm-input{background:#0a161c}
+.adm-upload-side{display:flex;flex-direction:column;align-items:center;gap:6px}
+.adm-upload-preview{display:block;width:76px;height:76px;border-radius:10px;object-fit:cover;background:var(--a-card-2)}
+.adm-upload-fields{display:flex;flex-direction:column;gap:10px;min-width:0}
+.adm-upload-state{display:flex;align-items:center;gap:5px;font-size:13px;color:var(--a-muted)}
+.adm-upload-state.is-done{color:var(--a-teal)}
+
 @media(max-width:420px){
   .adm-device-pill span{display:none}
   .adm-device-pill{width:36px;padding:0;justify-content:center}
@@ -308,6 +334,9 @@
   .adm-sheet-inner{max-width:560px;max-height:86dvh;border-radius:22px;border-bottom:1px solid var(--a-line-2)}
   .adm-sheet-actions{padding-bottom:14px}
   .adm-tiles{grid-template-columns:repeat(3,1fr)}
+  .adm-photo-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .adm-upload{grid-template-columns:112px minmax(0,1fr)}
+  .adm-upload-preview{width:112px;height:112px}
   .adm-tile{grid-template-columns:1fr;grid-template-rows:auto;row-gap:6px;padding:22px;align-items:start}
   .adm-tile-icon{grid-row:auto;margin-bottom:22px}
   .adm-tile>span:last-child{white-space:normal}

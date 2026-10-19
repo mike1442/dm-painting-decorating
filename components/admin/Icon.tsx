@@ -23,6 +23,8 @@ const paths = {
   search: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4",
   close: "M6 6l12 12M18 6 6 18",
   pound: "M16 6.5A4 4 0 0 0 9 9v9M6 13h7M6 18h11",
+  image: "M4 5h16v14H4zM4 16l5-5 4 4 2.5-2.5L20 17M15.5 9.5h.01",
+  edit: "M4 20h4L19 9l-4-4L4 16v4zM13.5 6.5l4 4",
 };
 
 export type IconName = keyof typeof paths;
