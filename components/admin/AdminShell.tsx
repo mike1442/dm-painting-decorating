@@ -12,6 +12,7 @@ const sections: { href: string; label: string; icon: IconName }[] = [
   { href: "/admin/quotes", label: "Quotes", icon: "quote" },
   { href: "/admin/invoices", label: "Invoices", icon: "invoice" },
   { href: "/admin/diary", label: "Diary", icon: "diary" },
+  { href: "/admin/photos", label: "Photos", icon: "image" },
 ];
 
 function SectionLinks({ pathname, className }: { pathname: string; className: string }) {

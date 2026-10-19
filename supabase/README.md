@@ -24,6 +24,12 @@ The application calls `dm_admin_is_member`, `dm_get_data`, `dm_save_data`, `dm_c
 
 Customer access uses only `dm_get_shared_document`. Each share has a cryptographically random 32-byte token; only its SHA-256 hash is stored. Creating a new link rotates and invalidates the previous link. Revocation and document deletion invalidate links immediately. The resolver projects the current document and public business fields from explicit allowlists, so subsequent payment updates appear without exposing admin records, notes, IDs, defaults, or other customers. Test invoices omit bank details.
 
+## Photo library migration
+
+`site-photos.sql` is additive migration source for the Photos section ([docs/photos.md](../docs/photos.md)), applied after `production-admin.sql`. It creates the public `site-photos` Storage bucket (WebP only, at most 5 MB per file), Storage policies that allow writes only through `private.dm_is_admin()`, the `public.admin_photos` metadata table, the permanent `private.dm_photo_names` file-name reservations and the guarded `dm_list_photos`, `dm_reserve_photo_name`, `dm_add_photo`, `dm_update_photo` and `dm_delete_photo` functions. Photo files are never stored in the database. It stops without changes if the guard function or Storage schema is missing, and applying it again is harmless.
+
+An anonymous read-only check on 19 October 2026 found the project's Storage API running with no `site-photos` bucket, and no Storage configuration in any migration. As with the other files here, the source file alone does not mean it has been applied: apply it with the authenticated migration tool under a descriptive name such as `dm_site_photos`, record the returned version below, and re-run the security advisors. Until then the Photos page explains that photo storage is not switched on, and the rest of the admin is unaffected.
+
 ## Auth and deployment configuration
 
 Mike must have a confirmed Supabase Auth account at `mike@dmpaintingdecorating.co.uk`; no account or password is fabricated by this migration. The initial audit found no account for Mike. Provision or invite the user through Supabase Auth, configure the production site URL and permitted redirects, and complete email verification/password setup. Passwords and service-role keys must never be committed or put in browser configuration.

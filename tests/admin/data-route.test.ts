@@ -14,7 +14,7 @@ test("a save the server refused before writing is marked safe to repeat; a faile
       if (specifier === "next/server") return { url: response, shortCircuit: true };
       if (specifier === "next/headers") return { url: headers, shortCircuit: true };
       if (specifier.startsWith("@/")) return { url: new URL(`../../${specifier.slice(2)}.ts`, import.meta.url).href, shortCircuit: true };
-      if (resolution.parentURL === httpUrl && ["../admin/auth", "./supabase"].includes(specifier)) {
+      if (resolution.parentURL === httpUrl && ["../admin/auth", "./photo-error", "./supabase"].includes(specifier)) {
         return { url: new URL(`${specifier}.ts`, httpUrl).href, shortCircuit: true };
       }
       return nextResolve(specifier, resolution);

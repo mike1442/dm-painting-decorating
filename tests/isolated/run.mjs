@@ -7,18 +7,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
+import sharp from "sharp";
 import { emptyCustomer, emptyData, newBooking } from "../../lib/admin/factories.ts";
 import { billGatesTestInvoice } from "../../lib/admin/fixtures.ts";
 import { normaliseAdminData } from "../../lib/admin/normalise.ts";
 import { createInvoice, createQuote } from "../../lib/admin/operations.ts";
-import { ISOLATED_MARKER, SUPABASE_HOST, startEmulator } from "./supabase-emulator.mjs";
+import { ISOLATED_MARKER, STORAGE_BYTES_SQL, SUPABASE_HOST, startEmulator } from "./supabase-emulator.mjs";
 
 // Runs the unmodified real-workflow Playwright suite (tests/live) against a
 // disposable loopback PostgreSQL database that has the real migrations applied,
 // served through the isolated Supabase emulator. Afterwards it inspects the
 // database directly: every Auth session must be revoked, every record created
 // by the suite (and stale records from interrupted runs) removed, and every
-// pre-existing business record and number sequence left exactly as seeded.
+// pre-existing business record, number sequence and photo left exactly as seeded,
+// with no test photo or stray photo file remaining in Storage.
 //
 // Requires: the pinned Supabase hostname mapped to 127.0.0.1 (e.g. in
 // /etc/hosts), openssl, psql and a PostgreSQL server reachable through
@@ -105,6 +107,25 @@ async function asAdmin(client, work) {
   }
 }
 
+/** One photo of Mike's own, stored through the real policies, that the suite must leave exactly as it is. */
+async function seedPhoto(client) {
+  await client.query(STORAGE_BYTES_SQL);
+  const main = await sharp({ create: { width: 1200, height: 900, channels: 3, background: "#d7c9a7" } }).webp({ quality: 80 }).toBuffer();
+  const thumb = await sharp(main).resize({ width: 480 }).webp({ quality: 72 }).toBuffer();
+  let files = [];
+  const photo = await asAdmin(client, async () => {
+    const name = (await client.query("select public.dm_reserve_photo_name('isolated-seed-kitchen') as name")).rows[0].name;
+    files = [[`${name}.webp`, main], [`thumbs/${name}.webp`, thumb]];
+    for (const [path, bytes] of files) {
+      await client.query("insert into storage.objects(bucket_id, name, owner, metadata) values ('site-photos', $1, auth.uid(), $2)", [path, { mimetype: "image/webp", size: bytes.length, cacheControl: "max-age=31536000" }]);
+    }
+    const record = { fileName: name, title: "Isolated seed kitchen", altText: "Seeded kitchen photo", category: "interior", width: 1200, height: 900, thumbWidth: 480, thumbHeight: 360, bytes: main.length, thumbBytes: thumb.length };
+    return (await client.query("select public.dm_add_photo($1::jsonb) as photo", [JSON.stringify(record)])).rows[0].photo;
+  });
+  for (const [path, bytes] of files) await client.query("insert into isolated_storage.object_bytes(bucket_id, name, content) values ('site-photos', $1, $2)", [path, bytes]);
+  return photo;
+}
+
 async function prepareDatabase(adminUrl) {
   const url = new URL(adminUrl);
   if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)) fail("ISOLATED_DATABASE_URL must point at a disposable loopback PostgreSQL server.");
@@ -116,7 +137,7 @@ async function prepareDatabase(adminUrl) {
   await server.end();
   url.pathname = `/${name}`;
   const databaseUrl = url.href;
-  for (const file of ["tests/isolated/auth-schema.sql", "supabase/base-schema.sql", "supabase/production-admin.sql"]) {
+  for (const file of ["tests/isolated/auth-schema.sql", "supabase/base-schema.sql", "supabase/production-admin.sql", "tests/db/storage-fixture.sql", "supabase/site-photos.sql"]) {
     const options = { stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, PGOPTIONS: "-c client_min_messages=warning" } };
     if (await run("psql", ["-X", "-q", "--set=ON_ERROR_STOP=1", `--dbname=${databaseUrl}`, `--file=${join(root, file)}`], options) !== 0) fail(`${file} could not be applied.`);
   }
@@ -125,6 +146,7 @@ async function prepareDatabase(adminUrl) {
   // The real enrolment trigger adds Mike's membership once his email is confirmed.
   await client.query("insert into auth.users(id, email, email_confirmed_at) values ($1, $2, now())", [adminId, adminEmail]);
   const seeded = await asAdmin(client, async () => (await client.query("select public.dm_save_data($1::jsonb, 0) as result", [JSON.stringify(seedData())])).rows[0].result);
+  seeded.photo = await seedPhoto(client);
   await client.end();
   return { databaseUrl, seeded };
 }
@@ -149,6 +171,15 @@ async function verifyDatabase(databaseUrl, seeded) {
     }
     if (JSON.stringify(final.data.settings) !== JSON.stringify(seeded.data.settings)) problems.push("Business settings or issued number sequences changed.");
     if (JSON.stringify(final.data.meta) !== JSON.stringify(seeded.data.meta)) problems.push("Backup metadata changed.");
+    const photos = await asAdmin(client, async () => (await client.query("select public.dm_list_photos() as result")).rows[0].result);
+    const testPhotos = photos.filter(photo => runPattern.test(photo.title));
+    if (testPhotos.length) problems.push(`${testPhotos.length} automated TEST photo(s) remain.`);
+    if (JSON.stringify(photos.find(photo => photo.id === seeded.photo.id)) !== JSON.stringify(seeded.photo)) problems.push("Pre-existing photo was changed or deleted.");
+    const files = (await client.query("select name from storage.objects where bucket_id = 'site-photos' order by name")).rows.map(row => row.name);
+    const expected = photos.flatMap(photo => [`${photo.fileName}.webp`, `thumbs/${photo.fileName}.webp`]).sort();
+    if (JSON.stringify(files) !== JSON.stringify(expected)) problems.push(`Photo storage holds ${files.length} file(s) for ${photos.length} photo(s): an upload, rename or deletion left files behind.`);
+    const stored = Number((await client.query("select count(*) from isolated_storage.object_bytes where bucket_id = 'site-photos'")).rows[0].count);
+    if (stored !== files.length) problems.push(`${stored} stored file bodies for ${files.length} photo file record(s).`);
   } finally {
     await client.end();
   }
@@ -179,6 +210,8 @@ async function main() {
       E2E_RUN_LIVE: "1",
       E2E_BASE_URL: "http://localhost:3000",
       E2E_ADMIN_PASSWORD: password,
+      // Browsers reach the emulator's public photo URLs over its throwaway TLS certificate.
+      E2E_ISOLATED_SUPABASE: "1",
     };
     for (const name of ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "NEXT_PUBLIC_SUPABASE_ANON_KEY"]) delete env[name];
 
@@ -194,10 +227,10 @@ async function main() {
     // NEXT_PUBLIC_* values are compiled into the build, so it must target the emulator.
     if (process.env.ISOLATED_SKIP_BUILD !== "1" && await run("npm", ["run", "build"], { cwd: root, env }) !== 0) fail("The production build failed.");
     const code = await run(process.execPath, [join(root, "node_modules/@playwright/test/cli.js"), "test", "--config", join(root, "playwright.live.config.ts"), ...process.argv.slice(2)], { cwd: root, env });
-    console.log(`ISOLATED: Upstream requests ${emulator.stats.requests} (at most ${emulator.stats.peakInFlight} at once), Auth user checks ${emulator.stats.userChecks}, sign-ins ${emulator.stats.signIns}, refreshes ${emulator.stats.refreshes}, logouts ${emulator.stats.logouts}, database calls ${emulator.stats.rpcCalls}, stalled reads ${emulator.stats.stalled}.`);
+    console.log(`ISOLATED: Upstream requests ${emulator.stats.requests} (at most ${emulator.stats.peakInFlight} at once), Auth user checks ${emulator.stats.userChecks}, sign-ins ${emulator.stats.signIns}, refreshes ${emulator.stats.refreshes}, logouts ${emulator.stats.logouts}, database calls ${emulator.stats.rpcCalls}, storage calls ${emulator.stats.storageCalls}, public photo downloads ${emulator.stats.publicDownloads}, stalled reads ${emulator.stats.stalled}.`);
     const problems = await verifyDatabase(databaseUrl, seeded);
     for (const problem of problems) console.error(`ISOLATED: FAIL ${problem}`);
-    if (!problems.length) console.log("ISOLATED: Database verified: every session revoked, every automated TEST record removed, pre-existing records, settings and sequences unchanged.");
+    if (!problems.length) console.log("ISOLATED: Database verified: every session revoked, every automated TEST record and photo removed with its files, pre-existing records, settings, sequences and photos unchanged.");
     process.exitCode = code === 0 && !problems.length ? 0 : 1;
   } finally {
     await emulator?.close();

@@ -123,7 +123,7 @@ export async function revokeAndClose(context: BrowserContext, origin: string, na
 }
 
 function deviceOptions(use: Record<string, unknown>, baseURL: string): BrowserContextOptions {
-  const pick = ["viewport", "userAgent", "deviceScaleFactor", "isMobile", "hasTouch", "serviceWorkers"] as const;
+  const pick = ["viewport", "userAgent", "deviceScaleFactor", "isMobile", "hasTouch", "serviceWorkers", "ignoreHTTPSErrors"] as const;
   return { ...Object.fromEntries(pick.filter(key => use[key] !== undefined).map(key => [key, use[key]])), baseURL };
 }
 

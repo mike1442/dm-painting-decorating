@@ -14,7 +14,7 @@ test("admin login remains usable on the selected viewport", async ({ page }) => 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
-for (const path of ["/admin", "/admin/quotes", "/admin/invoices", "/admin/diary", "/admin/settings", "/admin/invoices/private-record/preview"]) {
+for (const path of ["/admin", "/admin/quotes", "/admin/invoices", "/admin/diary", "/admin/photos", "/admin/settings", "/admin/invoices/private-record/preview"]) {
   test(`anonymous browser cannot enter ${path}`, async ({ page }) => {
     await page.goto(path);
     await expect(page).toHaveURL(/\/login$/);
@@ -40,6 +40,10 @@ test("anonymous API requests cannot read or mutate admin data", async ({ request
     request.put("/api/admin/data", { data: {} }),
     request.post("/api/admin/share", { data: { id: "private-record", action: "create" } }),
     request.post("/api/admin/share", { data: { id: "private-record", action: "revoke" } }),
+    request.get("/api/admin/photos"),
+    request.post("/api/admin/photos", { multipart: { title: "Anonymous", photo: { name: "photo.jpg", mimeType: "image/jpeg", buffer: Buffer.from([0xff, 0xd8, 0xff, 0xe0]) } } }),
+    request.patch("/api/admin/photos/0b6f1c2e-6a49-4a5e-9d0b-6c1f4f0a7e11", { data: { title: "Hijacked" } }),
+    request.delete("/api/admin/photos/0b6f1c2e-6a49-4a5e-9d0b-6c1f4f0a7e11"),
   ]);
   for (const response of responses) {
     expect(response.status()).toBe(401);

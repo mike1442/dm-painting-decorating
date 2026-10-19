@@ -3,9 +3,10 @@ import { createServer } from "node:https";
 import pg from "pg";
 
 // ISOLATED BROWSER WORKFLOW ONLY. A loopback stand-in for the hosted Supabase
-// gateway: GoTrue's password/refresh/user/logout endpoints and PostgREST's RPC
-// and table endpoints, backed by a disposable PostgreSQL database running the
-// real supabase/*.sql migrations. Requests run under the real anon/authenticated
+// gateway: GoTrue's password/refresh/user/logout endpoints, PostgREST's RPC
+// and table endpoints and Storage's upload/move/delete/public-download
+// endpoints, backed by a disposable PostgreSQL database running the real
+// supabase/*.sql migrations. Requests run under the real anon/authenticated
 // roles, grants, RLS and security-definer functions. It never contacts the
 // hosted project, and every response carries ISOLATED_MARKER so a runner can
 // prove it is not talking to the real project.
@@ -17,6 +18,15 @@ const ADMIN_EMAIL = "mike@dmpaintingdecorating.co.uk";
 // same token receive the current session instead of revoking it.
 const REUSE_INTERVAL_MS = 10_000;
 const MAX_BODY_BYTES = 12_000_000;
+
+/**
+ * Storage keeps file bytes outside the database; here they live in a table only
+ * the emulator itself (the database owner) can reach. Object rows are written in
+ * storage.objects under the caller's role, so the real policies decide access.
+ */
+export const STORAGE_BYTES_SQL = `create schema if not exists isolated_storage;
+create table if not exists isolated_storage.object_bytes (bucket_id text not null, name text not null, content bytea not null, primary key (bucket_id, name));
+revoke all on schema isolated_storage from public;`;
 
 const now = () => Math.floor(Date.now() / 1000);
 const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -39,7 +49,8 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
   const secret = randomBytes(32);
   /** refresh token -> { sessionId, revokedAt, child } */
   const refreshTokens = new Map();
-  const stats = { requests: 0, peakInFlight: 0, userChecks: 0, signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0, stalled: 0 };
+  const stats = { requests: 0, peakInFlight: 0, userChecks: 0, signIns: 0, refreshes: 0, logouts: 0, rpcCalls: 0, storageCalls: 0, publicDownloads: 0, stalled: 0 };
+  await pool.query(STORAGE_BYTES_SQL);
   let reads = 0;
   let inFlight = 0;
   /** Further stalls owed to the same read (path and credential), e.g. its retry. */
@@ -188,7 +199,103 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
     }
   }
 
-  async function route(request, url, body) {
+  /** Hosted Storage answers errors with HTTP 400 and the real status in the body. */
+  const storageError = (statusCode, error, message, code) => [400, { statusCode: String(statusCode), error, message, ...(code ? { code } : {}) }];
+
+  /** Run work in one transaction as the caller's role; `owner` work runs afterwards as the database owner. */
+  async function asCaller(request, work, owner = async () => {}) {
+    let role = "anon";
+    let claims = { role: "anon", iss: "supabase" };
+    const jwt = bearer(request);
+    if (jwt) {
+      const result = verify(jwt);
+      if (result.error) return storageError(403, "Unauthorized", result.error === "expired" ? "jwt expired" : "invalid signature", "InvalidJWT");
+      ({ claims } = result);
+      role = claims.role;
+    }
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`set local role ${role === "authenticated" ? "authenticated" : "anon"}`);
+      await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify(claims)]);
+      const result = await work(client, claims);
+      await client.query("reset role");
+      if (result[0] === 200) await owner(client, result);
+      await client.query(result[0] === 200 ? "commit" : "rollback");
+      return result;
+    } catch (error) {
+      await client.query("rollback").catch(() => {});
+      if (error?.code === "42501") return storageError(403, "Unauthorized", "new row violates row-level security policy", "AccessDenied");
+      if (error?.code === "23505") return storageError(409, "Duplicate", "The resource already exists", "Duplicate");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async function storage(request, url, body, raw) {
+    stats.storageCalls += 1;
+    const path = url.pathname;
+    const bucketOf = async id => (await pool.query("select id, public, file_size_limit, allowed_mime_types from storage.buckets where id = $1", [id])).rows[0];
+    const missingBucket = () => storageError(404, "Bucket not found", "Bucket not found", "NoSuchBucket");
+    if (path === "/storage/v1/object/move" && request.method === "POST") {
+      const { bucketId, sourceKey, destinationKey } = body ?? {};
+      if (!(await bucketOf(bucketId))) return missingBucket();
+      return asCaller(request, async client => {
+        const { rowCount } = await client.query("update storage.objects set name = $3, updated_at = now() where bucket_id = $1 and name = $2", [bucketId, sourceKey, destinationKey]);
+        return rowCount ? [200, { message: "Successfully moved" }] : storageError(404, "not_found", "Object not found", "NoSuchKey");
+      }, client => client.query("update isolated_storage.object_bytes set name = $3 where bucket_id = $1 and name = $2", [bucketId, sourceKey, destinationKey]));
+    }
+    const bucketPath = /^\/storage\/v1\/object\/([a-z0-9_-]+)$/.exec(path);
+    if (bucketPath && request.method === "DELETE") {
+      if (!(await bucketOf(bucketPath[1]))) return missingBucket();
+      const names = Array.isArray(body?.prefixes) ? body.prefixes.map(String) : [];
+      // Files the caller may not see are silently skipped, as on hosted Storage.
+      return asCaller(request, async client => {
+        const { rows } = await client.query("delete from storage.objects where bucket_id = $1 and name = any($2::text[]) returning bucket_id, name", [bucketPath[1], names]);
+        return [200, rows];
+      }, (client, [, rows]) => client.query("delete from isolated_storage.object_bytes where bucket_id = $1 and name = any($2::text[])", [bucketPath[1], rows.map(row => row.name)]));
+    }
+    const objectPath = /^\/storage\/v1\/object\/([a-z0-9_-]+)\/(.+)$/.exec(path);
+    if (objectPath && ["POST", "PUT"].includes(request.method)) {
+      const [, bucketId, encoded] = objectPath;
+      const name = encoded.split("/").map(decodeURIComponent).join("/");
+      const bucket = await bucketOf(bucketId);
+      if (!bucket) return missingBucket();
+      const mimetype = String(request.headers["content-type"] ?? "application/octet-stream").split(";")[0].trim();
+      if (bucket.allowed_mime_types?.length && !bucket.allowed_mime_types.includes(mimetype)) return storageError(415, "invalid_mime_type", `mime type ${mimetype} is not supported`, "InvalidMimeType");
+      if (bucket.file_size_limit && raw.length > Number(bucket.file_size_limit)) return storageError(413, "Payload too large", "The object exceeded the maximum allowed size", "EntityTooLarge");
+      const metadata = { mimetype, size: raw.length, cacheControl: String(request.headers["cache-control"] ?? "no-cache") };
+      const upsert = request.method === "PUT" || request.headers["x-upsert"] === "true";
+      return asCaller(request, async (client, claims) => {
+        const { rows } = await client.query(
+          `insert into storage.objects(bucket_id, name, owner, metadata) values ($1, $2, $3, $4)${upsert ? " on conflict (bucket_id, name) do update set metadata = excluded.metadata, owner = excluded.owner, updated_at = now()" : ""} returning id`,
+          [bucketId, name, claims.sub ?? null, metadata],
+        );
+        return [200, { Key: `${bucketId}/${name}`, Id: rows[0].id }];
+      }, client => client.query("insert into isolated_storage.object_bytes(bucket_id, name, content) values ($1, $2, $3) on conflict (bucket_id, name) do update set content = excluded.content", [bucketId, name, raw]));
+    }
+    return [404, { statusCode: "404", error: "not_found", message: "Not found" }];
+  }
+
+  /** Public bucket downloads need no key or session, exactly like hosted public URLs. */
+  async function publicDownload(url) {
+    stats.publicDownloads += 1;
+    const match = /^\/storage\/v1\/object\/public\/([a-z0-9_-]+)\/(.+)$/.exec(url.pathname);
+    if (!match) return storageError(404, "not_found", "Object not found");
+    const name = match[2].split("/").map(decodeURIComponent).join("/");
+    const bucket = (await pool.query("select public from storage.buckets where id = $1", [match[1]])).rows[0];
+    if (!bucket?.public) return storageError(404, "Bucket not found", "Bucket not found", "NoSuchBucket");
+    const { rows } = await pool.query(
+      "select o.metadata, b.content from storage.objects o join isolated_storage.object_bytes b on b.bucket_id = o.bucket_id and b.name = o.name where o.bucket_id = $1 and o.name = $2",
+      [match[1], name],
+    );
+    if (!rows[0]) return storageError(404, "not_found", "Object not found", "NoSuchKey");
+    return [200, rows[0].content, { "Content-Type": rows[0].metadata?.mimetype ?? "application/octet-stream", "Cache-Control": rows[0].metadata?.cacheControl ?? "no-cache" }];
+  }
+
+  async function route(request, url, body, raw) {
+    if (url.pathname.startsWith("/storage/v1/object/public/") && ["GET", "HEAD"].includes(request.method)) return publicDownload(url);
     if (request.headers.apikey !== publishableKey) return [401, { message: "Invalid API key" }];
     const path = url.pathname;
     if (path === "/auth/v1/health" && request.method === "GET") return [200, { name: "dm-isolated-supabase" }];
@@ -209,6 +316,7 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
       return [204, undefined];
     }
     if (path.startsWith("/rest/v1/")) return rest(request, url, body);
+    if (path.startsWith("/storage/v1/")) return storage(request, url, body, raw);
     return [404, { message: "Not found" }];
   }
 
@@ -223,18 +331,25 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
     request.on("end", async () => {
       let status;
       let payload;
+      let headers = {};
       stats.requests += 1;
       stats.peakInFlight = Math.max(stats.peakInFlight, ++inFlight);
       try {
         const url = new URL(request.url, `https://${SUPABASE_HOST}`);
-        const text = Buffer.concat(chunks).toString("utf8");
+        const raw = Buffer.concat(chunks);
+        // File uploads carry their bytes; every other request body is JSON.
+        const upload = /^\/storage\/v1\/object\/(?!move$|public\/)[a-z0-9_-]+\/.+/.test(url.pathname) && ["POST", "PUT"].includes(request.method);
         let body;
-        try { body = text ? JSON.parse(text) : undefined; }
-        catch { [status, payload] = [400, { code: "PGRST102", message: "Empty or invalid json" }]; }
+        if (!upload) {
+          const text = raw.toString("utf8");
+          try { body = text ? JSON.parse(text) : undefined; }
+          catch { [status, payload] = [400, { code: "PGRST102", message: "Empty or invalid json" }]; }
+        }
         // Optional network round-trip delay, to exercise behaviour under hosted-service latency.
         if (latencyMs) await new Promise(resolve => setTimeout(resolve, latencyMs));
         // Optionally leave every Nth read unanswered, like a stalled hosted connection.
-        const read = request.method === "GET" || /\/rpc\/(dm_admin_is_member|dm_get_data|dm_get_shared_document)$/.test(url.pathname);
+        // Public photo downloads are browser image loads, not the Auth/database reads this simulates.
+        const read = (request.method === "GET" && !url.pathname.startsWith("/storage/")) || /\/rpc\/(dm_admin_is_member|dm_get_data|dm_get_shared_document|dm_list_photos)$/.test(url.pathname);
         const same = `${url.pathname} ${request.headers.authorization ?? ""}`;
         if (read && owed.get(same) > 0) {
           owed.set(same, owed.get(same) - 1);
@@ -248,11 +363,16 @@ export async function startEmulator({ databaseUrl, port, tls, publishableKey, ad
           inFlight -= 1;
           return;
         }
-        if (status === undefined) [status, payload] = await route(request, url, body);
+        if (status === undefined) [status, payload, headers = {}] = await route(request, url, body, raw);
       } catch {
         [status, payload] = [500, { message: "Isolated emulator failure" }];
       }
       inFlight -= 1;
+      if (Buffer.isBuffer(payload)) {
+        response.writeHead(status, { [ISOLATED_MARKER]: "1", "Content-Length": payload.length, ...headers });
+        response.end(request.method === "HEAD" ? undefined : payload);
+        return;
+      }
       response.writeHead(status, { [ISOLATED_MARKER]: "1", ...(payload === undefined ? {} : { "Content-Type": "application/json" }) });
       response.end(payload === undefined ? undefined : JSON.stringify(payload));
     });

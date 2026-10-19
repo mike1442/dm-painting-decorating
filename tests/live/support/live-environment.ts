@@ -39,7 +39,7 @@ function upstreamUnavailable(response: APIResponse, method: string) {
   return response.status() === 503 && (method === "GET" || response.headers()["retry-after"] !== undefined);
 }
 
-export async function liveApi(request: APIRequestContext, origin: string, path: string, method: "GET" | "PUT" | "POST" = "GET", data?: unknown): Promise<APIResponse> {
+export async function liveApi(request: APIRequestContext, origin: string, path: string, method: "GET" | "PUT" | "POST" | "PATCH" | "DELETE" = "GET", data?: unknown): Promise<APIResponse> {
   const url = new URL(path, origin);
   if (url.origin !== origin || !url.pathname.startsWith("/api/")) throw new Error("Refusing an API request outside the selected application origin.");
   for (let attempt = 1; ; attempt += 1) {

@@ -70,3 +70,11 @@ jobs:
       - name: Verify empty-schema installation and first use
         if: matrix.scenario == 'fresh'
         run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/fresh-schema.sql
+      - name: Bootstrap isolated Storage fixtures
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/storage-fixture.sql
+      - name: Apply photo library migration (twice, to prove it can be repeated)
+        run: |
+          psql -X --set=ON_ERROR_STOP=1 --file=supabase/site-photos.sql
+          psql -X --set=ON_ERROR_STOP=1 --file=supabase/site-photos.sql
+      - name: Verify photo library storage and metadata security
+        run: psql -X --set=ON_ERROR_STOP=1 --file=tests/db/photos.sql

@@ -34,15 +34,17 @@ const READ_TIMEOUT_MS = 5000;
 const WRITE_TIMEOUT_MS = 15000;
 const SLOW_MS = 2000;
 /** Read-only RPCs may be repeated safely; every other RPC writes. */
-const READ_ONLY_RPCS = new Set(["dm_admin_is_member", "dm_get_data", "dm_get_shared_document"]);
+const READ_ONLY_RPCS = new Set(["dm_admin_is_member", "dm_get_data", "dm_get_shared_document", "dm_list_photos"]);
 
 /** Operational log: method and path only, never the query, tokens or bodies. */
 function logUpstream(method: string, path: string, outcome: string, started: number) {
   console.warn(`Supabase ${method} ${path.split("?")[0]} ${outcome} after ${Date.now() - started} ms`);
 }
 
-export async function supabaseRequest(path: string, { token, method = "GET", body, retryable = method === "GET" }: { token?: string; method?: string; body?: unknown; retryable?: boolean } = {}) {
+/** Request bodies are JSON, except Storage uploads, which send their bytes (with `headers`) as they are. */
+export async function supabaseRequest(path: string, { token, method = "GET", body, headers = {}, retryable = method === "GET" }: { token?: string; method?: string; body?: unknown; headers?: Record<string, string>; retryable?: boolean } = {}) {
   const { url, key } = configuration();
+  const binary = body instanceof Uint8Array;
   // Every admin request waits on several sequential Supabase calls, so one stalled
   // connection must not hold it for long. Reads get a short deadline and one
   // retry; writes get one longer attempt, because repeating them is unsafe.
@@ -53,8 +55,8 @@ export async function supabaseRequest(path: string, { token, method = "GET", bod
     try {
       response = await fetch(`${url}${path}`, {
         method, cache: "no-store", signal: AbortSignal.timeout(retryable ? READ_TIMEOUT_MS : WRITE_TIMEOUT_MS),
-        headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        headers: { apikey: key, ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body !== undefined && !binary ? { "Content-Type": "application/json" } : {}), ...headers },
+        ...(body !== undefined ? { body: binary ? body as Uint8Array<ArrayBuffer> : JSON.stringify(body) } : {}),
       });
       text = await response.text();
     } catch (error) {
@@ -71,9 +73,17 @@ export async function supabaseRequest(path: string, { token, method = "GET", bod
       catch { if (response.ok) throw new BackendError(502, "response"); }
     }
     // Auth errors carry a numeric HTTP `code` and the reason in `error_code`; database errors carry the SQLSTATE in `code`.
-    if (!response.ok) throw new BackendError(response.status, String(typeof result?.error_code === "string" ? result.error_code : result?.code ?? ""));
+    // Hosted Storage answers most errors with HTTP 400 and puts the real status in the body's `statusCode`.
+    if (!response.ok) {
+      const reported = Number(result?.statusCode);
+      throw new BackendError(reported >= 400 && reported < 600 ? reported : response.status, String(typeof result?.error_code === "string" ? result.error_code : result?.code ?? ""));
+    }
     return result;
   }
+}
+/** The permanent public HTTPS address of a file in a public Storage bucket. */
+export function publicObjectUrl(bucket: string, name: string) {
+  return `${projectUrl()}/storage/v1/object/public/${bucket}/${name.split("/").map(encodeURIComponent).join("/")}`;
 }
 export async function publicRpc(name: string, body: Record<string, unknown>) {
   return supabaseRequest(`/rest/v1/rpc/${name}`, { method: "POST", body, retryable: READ_ONLY_RPCS.has(name) });
