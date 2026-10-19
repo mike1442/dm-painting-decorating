@@ -15,9 +15,9 @@ Audited 18–19 October 2026 against the live site (https://www.dmpaintingdecora
 | Pages in the sitemap / in the crawl | 21 / 22 (`/room-designer` missing) | 24 / 24 |
 | Hubs more than one click from the homepage | `/services`, `/guides` (depth 2) | none |
 | `/room-designer` internal links | 1 | 23 |
-| Unique copy per location page | 39–48 words | 430–600 words in `<main>` |
+| Unique copy per location page | 39–48 words | 385–465 words in `<main>` |
 | Unique copy per service page | 29–35 words | 420–470 words in `<main>` |
-| Location page body overlap (mean 5-word shingles) | 42% | 14% |
+| Location page body overlap (mean 5-word shingles) | 42% | 17% |
 | Homepage title mentions a location | No | Yes |
 | Render-blocking third-party font request | Yes (Google Fonts `@import`) | No (self-hosted via `next/font`) |
 | `/contact` Cumulative Layout Shift (mobile) | 0.209 (font swap) | 0 |
@@ -109,7 +109,7 @@ Wallpaper hanging and removal (the form placeholder already mentions old wallpap
 | `/services/woodwork-painting` | woodwork, door and skirting painting | Commercial | Woodwork Painting in Warrington & South Manchester \| D&M |
 | `/services/exterior-decorating` | exterior house painting | Commercial | Exterior Decorating in Warrington & South Manchester \| D&M |
 | `/services/whole-house-decorating` | whole-house redecoration | Commercial | Whole-House Decorating \| Warrington & South Manchester \| D&M |
-| `/guides/*` | how-to and preparation questions (lead paint, distemper, new-build plaster…) | Informational, linking to the matching service | {guide title} \| D&M |
+| `/guides/*` | how-to and preparation questions (lead paint, distemper, new plaster…) | Informational, linking to the matching service | {guide title} \| D&M |
 | `/contact` | decorating quote Warrington | Transactional | Contact D&M \| Painting & Decorating Quotes in Warrington |
 
 ### Cannibalisation
@@ -128,7 +128,7 @@ Wallpaper hanging and removal (the form placeholder already mentions old wallpap
 - Every spoke links to its parent hub, and "Nearby areas" now lists genuine neighbours (Lymm ↔ Bowdon/Altrincham and Grappenhall, for example).
 - Visible breadcrumbs plus BreadcrumbList schema on every hub, spoke and guide (for example Home / Areas we cover / Warrington / Stockton Heath).
 - **Contextual cross-links:**
-  - Area pages link each service with a short description, plus the guide most relevant to local housing.
+  - Area pages link each service with a short description, plus the most relevant guide.
   - Service pages link the relevant guides, group areas by hub and link the other services.
   - Guides link their specific services and the areas where they are most relevant.
 - **Homepage:**
@@ -139,12 +139,12 @@ Wallpaper hanging and removal (the form placeholder already mentions old wallpap
 
 ### Content
 These changes contain no new business claims; `tests/seo/content.test.ts` fails if words like "insured", "guaranteed", "award", "accredited" or "five-star reviews" appear.
-- **Each location page now covers:**
-  - the local housing stock and landmarks, such as the Bridgewater Canal, Victorian terraces in Stockton Heath, Bowdon's conservation area and Lymm's sandstone cottages;
-  - three decorating considerations specific to those homes, such as lead paint, distemper, lime plaster, Artex, new-build settlement cracks and roof-lantern raking light;
-  - two or three locally relevant FAQs.
+- **Each location page sticks to decorating.** There are no property-type or estate-agent descriptions (house types, eras, landmarks); `tests/seo/content.test.ts` also fails if words like "Victorian", "terrace" or "cottage" appear. Each page has:
+  - how D&M covers the area (the existing copy, plus coverage notes on the two hubs);
+  - three decorating considerations that differ from page to page, such as lead paint, distemper, lime plaster, Artex ceilings, new plaster, raking light, stairwell access and designer paint finishes;
+  - two decorating FAQs.
 - **Service pages** have "what's included", approach, typical projects and FAQs, all built from the existing service claims.
-- **Three guides were expanded**, and two new ones added: "Decorating an older home" and "Decorating a new-build home".
+- **Three guides were expanded**, and two new ones added: "Decorating older surfaces: lead, distemper and lime plaster" and "Painting new plaster: when and how".
 - **The homepage H1** now leads with "Painters & decorators in Warrington & South Manchester" in the existing eyebrow style, so the visual design is unchanged.
 - **FAQs** use `<details>`: visible, indexable and collapsible. FAQPage schema is intentionally omitted, because Google only shows FAQ rich results for government and health sites.
 
@@ -190,5 +190,5 @@ The e2e run here used the sandbox's Chromium build through a local config overri
 3. Run the homepage and a service page through Google's Rich Results Test. Expect valid Breadcrumb data, and a LocalBusiness "missing address" notice, which is expected for a service-area business without a public address.
 4. Paste the homepage URL into WhatsApp to confirm the share preview.
 5. Re-run Lighthouse on the live URLs.
-6. Mike should **read every location page** and correct any local detail that doesn't match his experience. The descriptions of housing and landmarks are factual and general, but he knows these areas best.
+6. Mike should **read every location page** and check the decorating advice and coverage notes match how he works.
 7. Work through section 3: phone number, Google Business Profile, reviews, real photos, privacy policy.

@@ -52,6 +52,12 @@ test("public copy makes no unverified business claims", () => {
   for (const claim of claims) assert.ok(!claim.test(copy), `unverified claim matches ${claim}: "${copy.match(claim)?.[0]}"`);
 });
 
+test("public copy talks about decorating, not property types", () => {
+  const copy = JSON.stringify([areas, services, guides]);
+  const propertyTalk = /\b(victorian|edwardian|georgian|terraced?|terraces|semis?|semi-detached|villas?|cottages?|detached|bungalows?|new-builds?|interwar|post-war|1930s|period (homes?|propert(y|ies))|older (homes|houses|propert(y|ies)))\b/i;
+  assert.ok(!propertyTalk.test(copy), `property-type copy found: "${copy.match(propertyTalk)?.[0]}"`);
+});
+
 test("page metadata gives each page its own canonical and social preview", () => {
   const meta = pageMetadata({ title: "T", description: "D", path: "/areas/lymm" });
   assert.equal(meta.alternates?.canonical, "/areas/lymm");
