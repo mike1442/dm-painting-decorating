@@ -124,7 +124,7 @@ test("Mike approves on D&M's own page; ChatGPT receives only sealed tokens for a
   assert.equal(page.status, 200);
   assert.equal(page.headers.get("x-frame-options"), "DENY");
   assert.equal(page.headers.get("referrer-policy"), "same-origin", "The approval form must carry its origin, and nothing leaks to ChatGPT");
-  assert.match(page.headers.get("content-security-policy")!, /default-src 'none'.*form-action 'self' https:\/\/chatgpt\.com; frame-ancestors 'none'/);
+  assert.match(page.headers.get("content-security-policy")!, /default-src 'none'.*form-action 'self' https:\/\/chatgpt\.com https:\/\/chat\.openai\.com https:\/\/platform\.openai\.com; frame-ancestors 'none'/, "The approval may continue only to ChatGPT's own hosts");
   assert.ok(!html.includes("<script>") && html.includes("&lt;script&gt;"), "The client's name is escaped");
   assert.match(html, /Read quotes, invoices, the diary/);
   assert.ok(!/<script/i.test(html), "The consent page runs no scripts");

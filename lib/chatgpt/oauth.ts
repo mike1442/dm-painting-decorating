@@ -2,7 +2,7 @@ import { ADMIN_EMAIL, sameOrigin } from "../admin/auth.ts";
 import { revokeCurrentSession } from "../server/session.ts";
 import { BackendError, refreshSession, supabaseRequest, verifyAdmin, type AuthSession } from "../server/supabase.ts";
 import {
-  ACTIONS_PATH, ALL_SCOPES, AUTHORIZE_PATH, CODE_LIFETIME, CUSTOM_GPT_CLIENT_ID, GRANT_LIFETIME, IntegrationDisabled, MCP_PATH,
+  ACTIONS_PATH, ALL_SCOPES, AUTHORIZE_PATH, CHATGPT_ORIGINS, CODE_LIFETIME, CUSTOM_GPT_CLIENT_ID, GRANT_LIFETIME, IntegrationDisabled, MCP_PATH,
   REGISTER_PATH, REQUEST_LIFETIME, REVOKE_PATH, TOKEN_PATH, allowedRedirect, customGptRedirect, integrationKeys, isScope, originOf, resourcesFor,
   type Scope,
 } from "./config.ts";
@@ -46,8 +46,9 @@ const oauthError = (error: string, description: string, status = 400, headers: R
   jsonResponse({ error, error_description: description }, status, headers);
 const disabled = () => jsonResponse({ error: "temporarily_unavailable", error_description: new IntegrationDisabled().message }, 503);
 
-function htmlResponse(html: string, status: number, formTarget?: string) {
-  const formAction = ["'self'", formTarget].filter(Boolean).join(" ");
+/** `toChatGpt`: the page's form may continue to ChatGPT (the approval). Other pages stay on D&M. */
+function htmlResponse(html: string, status: number, toChatGpt = false) {
+  const formAction = ["'self'", ...(toChatGpt ? CHATGPT_ORIGINS : [])].join(" ");
   return new Response(html, {
     status,
     headers: {
@@ -225,7 +226,7 @@ export async function handleAuthorizeGet(request: Request): Promise<Response> {
   const validated = validateAuthorization(new URL(request.url).searchParams, origin);
   if (!validated.ok) return validated.response;
   const { client, request: pending } = validated;
-  return htmlResponse(consentPage({ clientName: client.name, scopes: pending.scope, request: seal("request", pending) }), 200, new URL(pending.ru).origin);
+  return htmlResponse(consentPage({ clientName: client.name, scopes: pending.scope, request: seal("request", pending) }), 200, true);
 }
 
 async function signInAsMike(password: string): Promise<AuthSession | "invalid" | "busy" | "unauthorised"> {
@@ -258,7 +259,7 @@ export async function handleAuthorizePost(request: Request): Promise<Response> {
     return htmlResponse(problemPage("This sign-in request has expired", "The request was older than 15 minutes or was changed."), 400);
   }
   const again = (error: string, status: number) =>
-    htmlResponse(consentPage({ clientName: client.name, scopes: pending.scope, request: seal("request", pending), error }), status, new URL(pending.ru).origin);
+    htmlResponse(consentPage({ clientName: client.name, scopes: pending.scope, request: seal("request", pending), error }), status, true);
   if (form.get("decision") !== "allow") return redirectWith(pending.ru, { error: "access_denied", error_description: "Mike declined the connection.", state: pending.st }, origin);
 
   const password = form.get("password") ?? "";

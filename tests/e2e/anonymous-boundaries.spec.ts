@@ -119,3 +119,18 @@ test("the ChatGPT consent page cannot be framed and never returns an unknown app
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+
+test("a Custom GPT's approval page loads for a chat.openai.com callback and may continue to chatgpt.com", async ({ page }) => {
+  // GPT editors may still show a chat.openai.com callback, which ChatGPT redirects
+  // to chatgpt.com. Browsers check the consent form's form-action on every hop.
+  const callback = "https://chat.openai.com/aip/g-e2eProbe/oauth/callback";
+  const response = await page.goto(`/oauth/authorize?response_type=code&client_id=dm-custom-gpt&redirect_uri=${encodeURIComponent(callback)}&state=e2e&scope=dm%3Aread`);
+  test.skip(response?.status() === 503, "This deployment has not switched the ChatGPT connection on.");
+  expect(response?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Connect ChatGPT to D&M admin" })).toBeVisible();
+  await expect(page.getByText("Your D&M Custom GPT")).toBeVisible();
+  const policy = response?.headers()["content-security-policy"] ?? "";
+  expect(/form-action ([^;]+)/.exec(policy)?.[1].split(" ").sort()).toEqual(["'self'", "https://chat.openai.com", "https://chatgpt.com", "https://platform.openai.com"]);
+  expect(policy).toContain("frame-ancestors 'none'");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
