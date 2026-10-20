@@ -29,6 +29,12 @@ export const CUSTOM_GPT_CLIENT_ID = "dm-custom-gpt";
  * opened from elsewhere can never hand Mike's access to a third party.
  */
 const REDIRECT_HOSTS = new Set(["chatgpt.com", "chat.openai.com", "platform.openai.com"]);
+/**
+ * Where Mike's approval may continue. ChatGPT's older chat.openai.com callbacks
+ * (still shown for some Custom GPTs) redirect to chatgpt.com, and browsers apply
+ * the consent page's form-action to every redirect, so all of them are allowed.
+ */
+export const CHATGPT_ORIGINS = [...REDIRECT_HOSTS].map(host => `https://${host}`);
 export function allowedRedirect(uri: unknown): uri is string {
   if (typeof uri !== "string" || uri.length > 500) return false;
   try {

@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { customerFrom, linesFrom } from "../admin/chatgpt.ts";
-import { addDays, daysBetween, formatDayLabel, formatLongDate, formatShortDate, isIsoDate, isWeekend } from "../admin/dates.ts";
+import { addDays, addMonths, daysBetween, firstOfMonth, formatDayLabel, formatLongDate, formatShortDate, isIsoDate, isWeekend, startOfWeek } from "../admin/dates.ts";
 import { formatDocNumber, newBooking, newId } from "../admin/factories.ts";
 import { depositPence, documentTotals, formatPence, invoiceTotals, lineTotalPence, parseAmount, toPence } from "../admin/money.ts";
-import { MAX_LINES, normaliseDeposit, normaliseVat, obj, textList } from "../admin/normalise.ts";
+import { MAX_LINES, MAX_TEXT, normaliseDeposit, normaliseVat, obj, textList } from "../admin/normalise.ts";
 import {
   bookingFieldsFromQuote, bookingsOn, createInvoice, createQuote, deleteBooking, deleteInvoice, deleteQuote, saveBooking, updateInvoice, updateQuote,
   type Clock, type QuoteInput,
@@ -11,7 +11,7 @@ import {
 import { invoiceState, quoteState } from "../admin/status.ts";
 import type { Address, AdminData, Booking, BusinessSettings, Customer, Invoice, IsoDate, LineItem, PaymentMethod, Quote, VatSetting } from "../admin/types.ts";
 import { CONFIRMATION_LIFETIME, type Scope } from "./config.ts";
-import { AuthRequired, changeRecords, createShare, readRecords, revokeShare, ToolError } from "./records.ts";
+import { AuthRequired, changeRecords, createShare, linkOpens, readBack, readRecords, revokeShare, ToolError } from "./records.ts";
 import { mac, sameSecret } from "./seal.ts";
 
 // The operations ChatGPT can perform for Mike. Each is a thin layer over the
@@ -23,6 +23,9 @@ import { mac, sameSecret } from "./seal.ts";
 //   document it already made instead of a second one.
 // - Every save goes through the database revision lock; nothing outside the
 //   requested change is touched.
+// - After a save the record is read back from Supabase and compared with what
+//   was asked; only a match is reported as saved, with the database's number.
+// - A customer link is opened the way the customer opens it before it is given.
 // - Deletions, revocations and replacing a link a customer may already hold
 //   need a confirmation code that only a preview of that exact action returns.
 
@@ -234,18 +237,90 @@ function search(query: string | undefined, ...fields: string[]) {
 }
 const limitOf = (args: Raw) => wholeDays(args, "limit", 1, 100) ?? 20;
 
-/* Customer links and confirmations ---------------------------------------- */
+/* Reading back and answering ------------------------------------------------ */
 
-async function newLink(context: ToolContext, id: string): Promise<{ customerLink: string } | { linkError: string }> {
-  try { return { customerLink: await createShare(context.token, id, context.origin) }; }
-  catch (error) {
-    if (error instanceof AuthRequired) throw error;
-    return { linkError: "The customer link could not be created just now. The document is saved; call create_customer_link to try again." };
+type Saveable = Quote | Invoice | Booking;
+const collection = (data: AdminData, kind: Saveable["kind"]): Saveable[] => kind === "quote" ? data.quotes : kind === "invoice" ? data.invoices : data.bookings;
+
+/** What a save must have stored. Supabase issues document numbers and the invoice's quote reference; updatedAt changes on every save. */
+function facts(record: Saveable): string {
+  const comparable = record.kind === "booking" ? { ...record, updatedAt: "" } : { ...record, updatedAt: "", number: "", ...(record.kind === "invoice" ? { quoteNumber: "" } : {}) };
+  return JSON.stringify(comparable, (_key, value: unknown) => value && typeof value === "object" && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => (a < b ? -1 : 1)))
+    : value);
+}
+
+/** A customer link made and opened in this call, or why there is none. */
+type LinkOutcome = { url: string } | { error: string } | { unchanged: "unchanged" | "not-requested" | "revoked" };
+
+/** The same answer for every quote or invoice that was created or changed, from the records as read back. */
+function documentResult(doc: Quote | Invoice, context: ToolContext, link: LinkOutcome, verified = true) {
+  const today = londonToday(context.now);
+  const totals = doc.kind === "invoice" ? invoiceTotals(doc) : { ...documentTotals(doc), paidPence: 0, balancePence: 0 };
+  return {
+    kind: doc.kind, id: doc.id, number: doc.number, customer: doc.customer.name,
+    amount: money(totals.totalPence), vat: vatText(doc.vat),
+    ...(doc.kind === "invoice" ? { paid: money(totals.paidPence), balance: money(totals.balancePence), dueDate: doc.dueDate } : { validUntil: doc.validUntil }),
+    status: doc.kind === "quote" ? quoteState(doc, today) : invoiceState(doc, today),
+    customerLink: "url" in link ? link.url : null,
+    customerLinkStatus: "url" in link ? "new" : "error" in link ? "failed" : link.unchanged,
+    ...(doc.isTest ? { testDocument: true } : {}),
+    adminUrl: adminUrl(context, doc),
+    verified,
+  };
+}
+
+/** Which document an answer is about, when nothing about it changed. */
+const briefly = (doc: Quote | Invoice) => ({ kind: doc.kind, id: doc.id, number: doc.number, customer: doc.customer.name });
+
+/**
+ * Reads the records back from Supabase after a write. The record must be there,
+ * with a database-issued number, and hold exactly what this call asked to save
+ * (`proposed`); otherwise the write is reported as unconfirmed, never as saved.
+ */
+async function readBackSaved<T extends Saveable>(context: ToolContext, kind: T["kind"], id: string, proposed: AdminData | null): Promise<{ record: T; records: AdminData }> {
+  const records = await readBack(context.token);
+  const record = collection(records, kind).find(item => item.id === id) as T | undefined;
+  if (!record) {
+    throw new ToolError(`D&M could not find the ${kind} when it read the records back, so it must not be reported as saved. Use list_${kind}s to check before trying again.`, { status: "unverified" });
+  }
+  const intended = proposed ? collection(proposed, kind).find(item => item.id === id) : undefined;
+  if ((record.kind !== "booking" && !record.number.trim()) || (intended && facts(intended) !== facts(record))) {
+    const name = record.kind === "booking" ? "booking" : `${record.kind} ${record.number}`;
+    throw new ToolError(
+      `The ${name} was saved, but when D&M read it back it did not match what was asked (it may have been changed on another device at the same moment). Do not report it as done or send it: ask Mike to check it in D&M admin at ${adminUrl(context, record)}.`,
+      { status: "unverified", ...(record.kind === "booking" ? {} : { document: documentResult(record, context, { unchanged: "unchanged" }, false) }) },
+    );
+  }
+  return { record, records };
+}
+
+/** After a deletion the record must be gone when the records are read back. */
+async function confirmDeleted(context: ToolContext, kind: Saveable["kind"], id: string, label: string) {
+  if (collection(await readBack(context.token), kind).some(item => item.id === id)) {
+    throw new ToolError(`${label} is still in D&M's records when they were read back, so it has not been deleted. Check D&M admin before trying again.`, { status: "unverified" });
   }
 }
-const linkSentence = (link: { customerLink: string } | { linkError: string }) =>
-  "customerLink" in link ? ` Customer link: ${link.customerLink} (anyone with this link can view and print it; any earlier link for this document has stopped working).` : ` ${link.linkError}`;
+
+/* Customer links and confirmations ---------------------------------------- */
+
+/** A new link replaces any earlier one. It is given to Mike only once it opens this document for an anonymous visitor. */
+async function newLink(context: ToolContext, doc: Quote | Invoice): Promise<{ url: string } | { error: string }> {
+  try {
+    const url = await createShare(context.token, doc.id, context.origin);
+    if (await linkOpens(url, doc)) return { url };
+    console.warn("ChatGPT customer link did not open its document when checked");
+  } catch (error) {
+    if (error instanceof AuthRequired) throw error;
+  }
+  return { error: `A working customer link could not be made just now. ${doc.kind === "quote" ? "Quote" : "Invoice"} ${doc.number} is saved; call create_customer_link to try again.` };
+}
+const linkData = (link: LinkOutcome) => "url" in link ? { customerLink: link.url } : "error" in link ? { linkError: link.error } : {};
+const linkSentence = (link: LinkOutcome) =>
+  "url" in link ? ` Customer link: ${link.url} (checked: it opens this document; anyone with this link can view and print it; any earlier link for this document has stopped working).`
+  : "error" in link ? ` ${link.error}` : "";
 const REPEAT_LINK = " Its customer link was given when it was first created and is left working; links cannot be shown again. Only if Mike needs a new one, call create_customer_link (the earlier link then stops working).";
+const LINK_KEPT = "Any customer link already given keeps working and shows this change.";
 /** A link the customer may already hold is replaced only with confirmation. */
 const customerMayHoldLink = (doc: Quote | Invoice) => doc.status !== "draft" || (doc.kind === "invoice" && doc.payments.length > 0);
 
@@ -403,7 +478,7 @@ const createQuoteTool: Tool = {
 
     // Set once this call has sent its write: finding the quote afterwards means the answer was lost, not a repeat.
     let sent = false;
-    const { result, records } = await changeRecords<"already-created" | "created" | Quote>(context.token, data => {
+    const { result, proposed } = await changeRecords<"already-created" | "created" | Quote>(context.token, data => {
       if (data.quotes.some(quote => quote.id === id)) return { result: sent ? "created" : "already-created" };
       const twin = allowDuplicate ? undefined : recentTwin(data.quotes, customer.name, subtotal, clock.now);
       if (twin) return { result: twin };
@@ -418,19 +493,19 @@ const createQuoteTool: Tool = {
         data: { status: "possible_duplicate", existingQuote: quoteSummary(result, context) },
       };
     }
-    const quote = records.quotes.find(record => record.id === id);
-    if (!quote) throw new ToolError("The quote could not be confirmed as saved. Call list_quotes to check before trying again.");
+    // A repeat is checked only for being there: Mike may have edited it since.
+    const { record: quote, records } = await readBackSaved<Quote>(context, "quote", id, result === "created" ? proposed : null);
     const summary = quoteSummary(quote, context);
     // A repeat never replaces the link: Mike may already have sent the first one.
-    const link = args.createCustomerLink === false || result === "already-created" ? null : await newLink(context, quote.id);
+    const link: LinkOutcome = args.createCustomerLink === false ? { unchanged: "not-requested" } : result === "already-created" ? { unchanged: "unchanged" } : await newLink(context, quote);
     const warnings = [
       ...(quote.isTest ? ["This is a TEST quote: do not send it to a real customer."] : []),
       ...([...quote.works, ...quote.materials].some(line => line.unitPrice === 0) ? ["At least one item has no price."] : []),
     ];
     const opening = result === "created" ? `Created quote ${quote.number}` : `Quote ${quote.number} was already created by an earlier identical request (no duplicate made)`;
     return {
-      message: `${opening} for ${quote.customer.name}: ${quote.title}. Total ${summary.total} (${summary.vat}).${link ? linkSentence(link) : result === "already-created" ? REPEAT_LINK : ""} In D&M admin: ${summary.adminUrl}.${warnings.length ? ` ${warnings.join(" ")}` : ""}`,
-      data: { status: result === "created" ? "created" : "already_created", quote: quoteDetail(quote, records, context), ...(link ?? {}), ...(warnings.length ? { warnings } : {}) },
+      message: `${opening} for ${quote.customer.name}: ${quote.title}. Total ${summary.total} (${summary.vat}).${result === "already-created" && args.createCustomerLink !== false ? REPEAT_LINK : linkSentence(link)} In D&M admin: ${summary.adminUrl}.${warnings.length ? ` ${warnings.join(" ")}` : ""}`,
+      data: { status: result === "created" ? "created" : "already_created", document: documentResult(quote, context, link), quote: quoteDetail(quote, records, context), ...linkData(link), ...(warnings.length ? { warnings } : {}) },
     };
   },
 };
@@ -459,7 +534,7 @@ const updateQuoteTool: Tool = {
     const changes = ["customer", "title", "intro", "scope", "works", "materials", "materialsNote", "validUntil", "vat", "deposit", "terms", "internalNotes", "status"].filter(key => args[key] !== undefined);
     if (!changes.length) throw new ToolError("Say what to change on the quote.");
     let id = "";
-    const { records } = await changeRecords(context.token, data => {
+    const { proposed } = await changeRecords(context.token, data => {
       const quote = find(data.quotes, reference, "quote");
       id = quote.id;
       const next = updateQuote(data, quote.id, current => ({
@@ -481,9 +556,13 @@ const updateQuoteTool: Tool = {
       checkSubtotal(num(args, "expectedSubtotal"), documentTotals(next.quotes.find(record => record.id === quote.id)!).subtotalPence);
       return { data: next, result: null };
     });
-    const quote = records.quotes.find(record => record.id === id)!;
+    const { record: quote, records } = await readBackSaved<Quote>(context, "quote", id, proposed);
     const summary = quoteSummary(quote, context);
-    return { message: `Updated quote ${quote.number} (${changes.join(", ")}). Total now ${summary.total} (${summary.vat}); status ${summary.status}.`, data: { status: "updated", quote: quoteDetail(quote, records, context) } };
+    const link: LinkOutcome = { unchanged: "unchanged" };
+    return {
+      message: `Updated quote ${quote.number} (${changes.join(", ")}). Total now ${summary.total} (${summary.vat}); status ${summary.status}. ${LINK_KEPT}`,
+      data: { status: "updated", document: documentResult(quote, context, link), quote: quoteDetail(quote, records, context) },
+    };
   },
 };
 
@@ -577,7 +656,7 @@ const createInvoiceTool: Tool = {
     let id = "";
     let quoteNumber = "";
     let sent = false;
-    const { result, records } = await changeRecords<"already-created" | "created" | Invoice>(context.token, data => {
+    const { result, proposed } = await changeRecords<"already-created" | "created" | Invoice>(context.token, data => {
       let twin: Invoice | undefined;
       let created: ReturnType<typeof createInvoice>;
       if (fromQuote) {
@@ -609,14 +688,13 @@ const createInvoiceTool: Tool = {
         data: { status: "possible_duplicate", existingInvoice: invoiceSummary(result, context) },
       };
     }
-    const invoice = records.invoices.find(record => record.id === id);
-    if (!invoice) throw new ToolError("The invoice could not be confirmed as saved. Call list_invoices to check before trying again.");
+    const { record: invoice, records } = await readBackSaved<Invoice>(context, "invoice", id, result === "created" ? proposed : null);
     const summary = invoiceSummary(invoice, context);
-    const link = args.createCustomerLink === false || result === "already-created" ? null : await newLink(context, invoice.id);
+    const link: LinkOutcome = args.createCustomerLink === false ? { unchanged: "not-requested" } : result === "already-created" ? { unchanged: "unchanged" } : await newLink(context, invoice);
     const opening = result === "created" ? `Created invoice ${invoice.number}` : `Invoice ${invoice.number} was already created by an earlier identical request (no duplicate made)`;
     return {
-      message: `${opening} for ${invoice.customer.name}: ${invoice.title}. Total ${summary.total} (${summary.vat}), due ${formatLongDate(invoice.dueDate)}.${invoice.quoteNumber ? ` From quote ${invoice.quoteNumber}, now marked accepted.` : ""}${link ? linkSentence(link) : result === "already-created" ? REPEAT_LINK : ""} In D&M admin: ${summary.adminUrl}.${invoice.isTest ? " This is a TEST invoice: no payment is due." : ""}`,
-      data: { status: result === "created" ? "created" : "already_created", invoice: invoiceDetail(invoice, records, context), ...(link ?? {}) },
+      message: `${opening} for ${invoice.customer.name}: ${invoice.title}. Total ${summary.total} (${summary.vat}), due ${formatLongDate(invoice.dueDate)}.${invoice.quoteNumber ? ` From quote ${invoice.quoteNumber}, now marked accepted.` : ""}${result === "already-created" && args.createCustomerLink !== false ? REPEAT_LINK : linkSentence(link)} In D&M admin: ${summary.adminUrl}.${invoice.isTest ? " This is a TEST invoice: no payment is due." : ""}`,
+      data: { status: result === "created" ? "created" : "already_created", document: documentResult(invoice, context, link), invoice: invoiceDetail(invoice, records, context), ...linkData(link) },
     };
   },
 };
@@ -642,16 +720,20 @@ const updateInvoiceTool: Tool = {
     const changes = ["customer", "title", "scope", "works", "materials", "materialsNote", "vat", "dueDate", "dueInDays", "paymentNote", "internalNotes", "status"].filter(key => args[key] !== undefined);
     if (!changes.length) throw new ToolError("Say what to change on the invoice.");
     let id = "";
-    const { records } = await changeRecords(context.token, data => {
+    const { proposed } = await changeRecords(context.token, data => {
       const invoice = find(data.invoices, reference, "invoice");
       id = invoice.id;
       const next = updateInvoice(data, invoice.id, current => invoiceFields(args, data.settings, current, clock, works, materials), clock.now);
       checkSubtotal(num(args, "expectedSubtotal"), documentTotals(next.invoices.find(record => record.id === id)!).subtotalPence);
       return { data: next, result: null };
     });
-    const invoice = records.invoices.find(record => record.id === id)!;
+    const { record: invoice, records } = await readBackSaved<Invoice>(context, "invoice", id, proposed);
     const summary = invoiceSummary(invoice, context);
-    return { message: `Updated invoice ${invoice.number} (${changes.join(", ")}). Total ${summary.total}, balance ${summary.balance}, due ${formatLongDate(invoice.dueDate)}; status ${summary.status}.`, data: { status: "updated", invoice: invoiceDetail(invoice, records, context) } };
+    const link: LinkOutcome = { unchanged: "unchanged" };
+    return {
+      message: `Updated invoice ${invoice.number} (${changes.join(", ")}). Total ${summary.total}, balance ${summary.balance}, due ${formatLongDate(invoice.dueDate)}; status ${summary.status}. ${LINK_KEPT}`,
+      data: { status: "updated", document: documentResult(invoice, context, link), invoice: invoiceDetail(invoice, records, context) },
+    };
   },
 };
 
@@ -677,7 +759,7 @@ const recordPayment: Tool = {
     if (!remaining && !(amount !== undefined && amount > 0)) throw new ToolError("Give the amount received, or set payRemainingBalance.");
     const paymentId = newId();
     let id = "";
-    const { result, records } = await changeRecords(context.token, data => {
+    const { result, proposed } = await changeRecords(context.token, data => {
       const invoice = find(data.invoices, reference, "invoice");
       id = invoice.id;
       if (invoice.payments.some(payment => payment.id === paymentId)) return { result: "recorded" as const };
@@ -693,14 +775,17 @@ const recordPayment: Tool = {
         result: "recorded" as const,
       };
     });
-    const invoice = records.invoices.find(record => record.id === id)!;
+    const { record: invoice } = await readBackSaved<Invoice>(context, "invoice", id, proposed);
+    if (result === "recorded" && !invoice.payments.some(payment => payment.id === paymentId)) {
+      throw new ToolError(`D&M could not find the payment on ${invoice.number} when it read the records back, so it must not be reported as recorded. Use get_invoice to check before trying again.`, { status: "unverified" });
+    }
     const summary = invoiceSummary(invoice, context);
     const messages = {
-      recorded: `Recorded the payment against ${invoice.number}. Paid ${summary.paid} of ${summary.total}; balance ${summary.balance} (${summary.status}).`,
+      recorded: `Recorded the payment against ${invoice.number}. Paid ${summary.paid} of ${summary.total}; balance ${summary.balance} (${summary.status}). ${LINK_KEPT}`,
       "already-paid": `${invoice.number} is already fully paid; nothing was recorded.`,
       duplicate: `An identical payment (${paid}, ${method}) is already recorded on ${invoice.number}, so it was not added again. Balance ${summary.balance}. Only if Mike says it was really paid twice, call again with allowDuplicate: true.`,
     };
-    return { message: messages[result], data: { status: result.replace("-", "_"), invoice: invoiceSummary(invoice, context) } };
+    return { message: messages[result], data: { status: result.replace("-", "_"), document: documentResult(invoice, context, { unchanged: "unchanged" }), invoice: summary } };
   },
 };
 
@@ -714,26 +799,48 @@ function lastWorkingDay(start: IsoDate, days: number, weekends: boolean): IsoDat
   }
   return end;
 }
+const periods = ["today", "this-week", "next-week", "this-month", "next-month"] as const;
+type Period = (typeof periods)[number];
+const periodNames: Record<Period, string> = { today: "today", "this-week": "this week", "next-week": "next week", "this-month": "this month", "next-month": "next month" };
+/** UK weeks run Monday to Sunday. */
+function periodRange(period: Period, today: IsoDate): { from: IsoDate; to: IsoDate } {
+  const monday = startOfWeek(today);
+  const month = period === "next-month" ? addMonths(today, 1) : firstOfMonth(today);
+  switch (period) {
+    case "today": return { from: today, to: today };
+    case "this-week": return { from: monday, to: addDays(monday, 6) };
+    case "next-week": return { from: addDays(monday, 7), to: addDays(monday, 13) };
+    default: return { from: month, to: addDays(addMonths(month, 1), -1) };
+  }
+}
+const periodSchema = oneOf(periods, "A named range in UK time instead of from/to, e.g. next-week for \"my diary next week\" (Monday to Sunday).");
+/** A named period, or from/to, or the given defaults. */
+function rangeOf(args: Raw, context: ToolContext, defaultDays: number): { from: IsoDate; to: IsoDate; period?: Period } {
+  const period = choice(args, "period", periods);
+  if (period) return { ...periodRange(period, londonToday(context.now)), period };
+  const from = day(args, "from") ?? londonToday(context.now);
+  return { from, to: day(args, "to") ?? addDays(from, defaultDays) };
+}
+
 const clashesWith = (bookings: Booking[], start: IsoDate, end: IsoDate, except?: string) =>
   bookings.filter(booking => booking.id !== except && booking.start <= end && booking.end >= start);
 const clashText = (clashes: Booking[]) => clashes.map(booking => `${booking.job || "a job"}${booking.customerName ? ` for ${booking.customerName}` : ""} (${dateRange(booking.start, booking.end)}, ${booking.status})`).join("; ");
 
 const listBookings: Tool = {
   name: "list_bookings", title: "Read the diary", kind: "read", scope: "dm:read",
-  summary: "Read diary bookings between two dates (default the next 30 days), with job, customer, dates, status, notes and linked quote or invoice.",
-  description: "Read diary bookings overlapping a date range (default today to 30 days ahead), with job, customer, first and last day, status (confirmed or provisional), notes and linked quote or invoice. Returns booking ids for update_booking.",
-  inputSchema: object({ from: date("First day, YYYY-MM-DD (default today)."), to: date("Last day, YYYY-MM-DD (default 30 days after from)."), search: text("Words to match in the job, customer, address or notes.") }),
+  summary: "Read diary bookings for a period (e.g. next-week) or between two dates (default the next 30 days), with job, customer, dates, status, notes and linked quote or invoice.",
+  description: "Read diary bookings overlapping a date range, with job, customer, first and last day, status (confirmed or provisional), notes and linked quote or invoice. For \"my diary next week\" give period next-week; otherwise from and to (default today to 30 days ahead). Returns booking ids for update_booking.",
+  inputSchema: object({ period: periodSchema, from: date("First day, YYYY-MM-DD (default today)."), to: date("Last day, YYYY-MM-DD (default 30 days after from)."), search: text("Words to match in the job, customer, address or notes.") }),
   async run(args, context) {
-    const from = day(args, "from") ?? londonToday(context.now);
-    const to = day(args, "to") ?? addDays(from, 30);
+    const { from, to, period } = rangeOf(args, context, 30);
     if (to < from) throw new ToolError("to must not be before from.");
     const { data } = await readRecords(context.token);
     const query = str(args, "search", 200);
     const bookings = data.bookings.filter(booking => booking.start <= to && booking.end >= from && search(query, booking.job, booking.customerName, addressLine(booking.address), booking.notes))
       .sort((a, b) => a.start.localeCompare(b.start) || a.job.localeCompare(b.job));
     return {
-      message: bookings.length ? `${bookings.length} booking${bookings.length === 1 ? "" : "s"} between ${formatShortDate(from)} and ${formatShortDate(to)}.` : `Nothing booked between ${formatShortDate(from)} and ${formatShortDate(to)}.`,
-      data: { from, to, bookings: bookings.map(booking => bookingOut(booking, data, context)) },
+      message: `${bookings.length ? `${bookings.length} booking${bookings.length === 1 ? "" : "s"}` : "Nothing booked"} ${period ? `${periodNames[period]} (${dateRange(from, to)})` : `between ${formatShortDate(from)} and ${formatShortDate(to)}`}.`,
+      data: { today: londonToday(context.now), from, to, ...(period ? { period } : {}), bookings: bookings.map(booking => bookingOut(booking, data, context)) },
     };
   },
 };
@@ -741,14 +848,13 @@ const listBookings: Tool = {
 const checkAvailability: Tool = {
   name: "check_availability", title: "Check availability", kind: "read", scope: "dm:read",
   summary: "Show which days are free or booked, and find the earliest run of free working days for a job of a given length.",
-  description: "Show which days in a range are free or booked (default the next two weeks). Give daysNeeded to find the three earliest runs of that many free working days (Monday to Friday unless includeWeekends), searching up to six months ahead. Provisional bookings count as busy.",
+  description: "Show which days in a range are free or booked (a period such as next-week, or from and to; default the next two weeks). Give daysNeeded to find the three earliest runs of that many free working days (Monday to Friday unless includeWeekends), searching up to six months ahead. Provisional bookings count as busy.",
   inputSchema: object({
-    from: date("First day, YYYY-MM-DD (default today)."), to: date("Last day to list, YYYY-MM-DD (default 13 days after from, at most 92)."),
+    period: periodSchema, from: date("First day, YYYY-MM-DD (default today)."), to: date("Last day to list, YYYY-MM-DD (default 13 days after from, at most 92)."),
     daysNeeded: integer("Working days the job needs.", 1, 60), includeWeekends: boolean("Count Saturdays and Sundays as working days."),
   }),
   async run(args, context) {
-    const from = day(args, "from") ?? londonToday(context.now);
-    const to = day(args, "to") ?? addDays(from, 13);
+    const { from, to } = rangeOf(args, context, 13);
     if (to < from || daysBetween(from, to) > 92) throw new ToolError("Choose a range of up to 92 days with to after from.");
     const weekends = flag(args, "includeWeekends");
     const needed = wholeDays(args, "daysNeeded", 1, 60);
@@ -807,7 +913,7 @@ const createBooking: Tool = {
     const randomId = newId();
     let id = "";
     let sent = false;
-    const { result, records } = await changeRecords<"already-booked" | "booked" | Booking[]>(context.token, data => {
+    const { result, records: current, proposed } = await changeRecords<"already-booked" | "booked" | Booking[]>(context.token, data => {
       const quote = args.quote ? find(data.quotes, required(args, "quote", 80), "quote") : undefined;
       const invoice = args.invoice ? find(data.invoices, required(args, "invoice", 80), "invoice") : undefined;
       const prefill: Partial<Booking> = quote ? bookingFieldsFromQuote(quote)
@@ -834,10 +940,10 @@ const createBooking: Tool = {
     if (Array.isArray(result)) {
       return {
         message: `Not booked: ${dateRange(start, end)} clashes with ${clashText(result)}. Ask Mike whether to double-book or choose other dates (check_availability can find free days). Only if he agrees, call again with allowOverlap: true.`,
-        data: { status: "clash", clashes: result.map(booking => bookingOut(booking, records, context)) },
+        data: { status: "clash", clashes: result.map(booking => bookingOut(booking, current, context)) },
       };
     }
-    const booking = records.bookings.find(record => record.id === id)!;
+    const { record: booking, records } = await readBackSaved<Booking>(context, "booking", id, result === "booked" ? proposed : null);
     return {
       message: `${result === "booked" ? "Booked" : "Already booked (no duplicate made)"}: ${booking.job}${booking.customerName ? ` for ${booking.customerName}` : ""}, ${dateRange(booking.start, booking.end)} (${booking.status}).`,
       data: { status: result === "booked" ? "booked" : "already_booked", booking: bookingOut(booking, records, context) },
@@ -865,7 +971,7 @@ const updateBooking: Tool = {
     const end = day(args, "end");
     const status = choice(args, "status", bookingStatuses);
     const note = str(args, "addNote", 1000);
-    const { result, records } = await changeRecords(context.token, data => {
+    const { result, records: current, proposed } = await changeRecords(context.token, data => {
       const booking = data.bookings.find(record => record.id === reference.trim());
       if (!booking) throw new ToolError("No booking has that id. Use list_bookings to find it.");
       const link = (key: "quote" | "invoice") => {
@@ -891,14 +997,15 @@ const updateBooking: Tool = {
         invoiceId: link("invoice"),
       };
       if (next.end < next.start) throw new ToolError("end must not be before start.");
+      if (next.notes.length > MAX_TEXT) throw new ToolError(`The booking's notes would be longer than ${MAX_TEXT} characters. Nothing was saved; replace the notes with a shorter version instead.`);
       const clashes = clashesWith(data.bookings, next.start, next.end, booking.id);
       if ((next.start !== booking.start || next.end !== booking.end) && clashes.length && !flag(args, "allowOverlap")) return { result: clashes };
       return { data: saveBooking(data, next, clock.now), result: null };
     });
     if (Array.isArray(result)) {
-      return { message: `Not moved: those dates clash with ${clashText(result)}. Ask Mike; only if he agrees, call again with allowOverlap: true.`, data: { status: "clash", clashes: result.map(booking => bookingOut(booking, records, context)) } };
+      return { message: `Not moved: those dates clash with ${clashText(result)}. Ask Mike; only if he agrees, call again with allowOverlap: true.`, data: { status: "clash", clashes: result.map(booking => bookingOut(booking, current, context)) } };
     }
-    const booking = records.bookings.find(record => record.id === reference.trim())!;
+    const { record: booking, records } = await readBackSaved<Booking>(context, "booking", reference.trim(), proposed);
     return { message: `Updated the booking (${changes.join(", ")}): ${booking.job}, ${dateRange(booking.start, booking.end)} (${booking.status}).`, data: { status: "updated", booking: bookingOut(booking, records, context) } };
   },
 };
@@ -908,18 +1015,23 @@ const updateBooking: Tool = {
 const createCustomerLink: Tool = {
   name: "create_customer_link", title: "Create a customer link", kind: "write", scope: "dm:write",
   summary: "Create a fresh secure web link to a quote or invoice for the customer. Any earlier link for that document stops working.",
-  description: "Create a fresh secure link where the customer can view and print a quote or invoice (private notes are never shown). Links cannot be looked up again, so this always makes a new one and any earlier link for that document stops working: tell Mike so. If the document is marked sent (or has payments), the customer may hold the old link, so a confirmation code is returned first. When Mike says he has sent a document, mark it sent with update_quote or update_invoice so its link is protected.",
+  description: "Create a fresh secure link where the customer can view and print a quote or invoice (private notes are never shown). Use it whenever Mike asks for a document's link, e.g. \"find John's invoice and give me the link\": find it with list_invoices or list_quotes first. Links cannot be looked up again, so this always makes a new one, checked to open the document, and any earlier link for that document stops working: tell Mike so. If the document is marked sent (or has payments), the customer may hold the old link, so a confirmation code is returned first. When Mike says he has sent a document, mark it sent with update_quote or update_invoice so its link is protected.",
   inputSchema: object({ document: documentRef, confirmationCode: confirmation }, ["document"]),
   async run(args, context) {
     const { data } = await readRecords(context.token);
     const doc = findDocument(data, required(args, "document", 80));
     const label = `${doc.kind} ${doc.number}${doc.customer.name ? ` for ${doc.customer.name}` : ""}`;
     if (customerMayHoldLink(doc) && !confirmed(context, "replace-link", doc, args.confirmationCode)) {
-      return confirmationNeeded(context, "create_customer_link", "replace-link", doc, `${label} is marked ${doc.status}, so the customer may already have a link. A new link will stop the old one working.`, args.confirmationCode, { document: doc.number });
+      const held = doc.status !== "draft" ? `is marked ${doc.status}` : "has payments recorded";
+      return confirmationNeeded(context, "create_customer_link", "replace-link", doc, `${label} ${held}, so the customer may already have a link. A new link will stop the old one working.`, args.confirmationCode, { document: briefly(doc) });
     }
-    const link = await newLink(context, doc.id);
-    if ("linkError" in link) throw new ToolError(link.linkError);
-    return { message: `New customer link for ${label}: ${link.customerLink} (any earlier link for this document has stopped working).`, data: { status: "created", document: doc.number, kind: doc.kind, customerLink: link.customerLink } };
+    const link = await newLink(context, doc);
+    if ("error" in link) throw new ToolError(link.error, { status: "unavailable", document: documentResult(doc, context, link) });
+    const document = documentResult(doc, context, link);
+    return {
+      message: `New customer link for ${label}: ${link.url} (checked: it opens this ${doc.kind}; any earlier link for this document has stopped working). Total ${document.amount}.`,
+      data: { status: "created", document, customerLink: link.url },
+    };
   },
 };
 
@@ -933,10 +1045,10 @@ const revokeCustomerLink: Tool = {
     const doc = findDocument(data, required(args, "document", 80));
     const label = `${doc.kind} ${doc.number}${doc.customer.name ? ` for ${doc.customer.name}` : ""}`;
     if (!confirmed(context, "revoke-link", doc, args.confirmationCode)) {
-      return confirmationNeeded(context, "revoke_customer_link", "revoke-link", doc, `Revoking will stop any customer link to ${label} from working.`, args.confirmationCode, { document: doc.number });
+      return confirmationNeeded(context, "revoke_customer_link", "revoke-link", doc, `Revoking will stop any customer link to ${label} from working.`, args.confirmationCode, { document: briefly(doc) });
     }
     await revokeShare(context.token, doc.id);
-    return { message: `Customer access to ${label} has been revoked. Earlier links now show "This document is unavailable". A new link can be created later with create_customer_link.`, data: { status: "revoked", document: doc.number } };
+    return { message: `Customer access to ${label} has been revoked. Earlier links now show "This document is unavailable". A new link can be created later with create_customer_link.`, data: { status: "revoked", document: { ...briefly(doc), customerLink: null, customerLinkStatus: "revoked" } } };
   },
 };
 
@@ -958,6 +1070,7 @@ const deleteQuoteTool: Tool = {
       const target = stillAsConfirmed(current.quotes.find(record => record.id === quote.id), quote.updatedAt);
       return target ? { data: deleteQuote(current, target.id), result: null } : { result: null };
     });
+    await confirmDeleted(context, "quote", quote.id, `Quote ${quote.number}`);
     return { message: `Quote ${quote.number} has been deleted. Its number stays reserved and its customer link no longer works.`, data: { status: "deleted", quote: quote.number } };
   },
 };
@@ -978,6 +1091,7 @@ const deleteInvoiceTool: Tool = {
       const target = stillAsConfirmed(current.invoices.find(record => record.id === invoice.id), invoice.updatedAt);
       return target ? { data: deleteInvoice(current, target.id), result: null } : { result: null };
     });
+    await confirmDeleted(context, "invoice", invoice.id, `Invoice ${invoice.number}`);
     return { message: `Invoice ${invoice.number} has been deleted. Its number stays reserved and its customer link no longer works.`, data: { status: "deleted", invoice: invoice.number } };
   },
 };
@@ -999,6 +1113,7 @@ const deleteBookingTool: Tool = {
       const target = stillAsConfirmed(current.bookings.find(record => record.id === booking.id), booking.updatedAt);
       return target ? { data: deleteBooking(current, target.id), result: null } : { result: null };
     });
+    await confirmDeleted(context, "booking", booking.id, `The booking ${label}`);
     return { message: `Removed ${label} from the diary.`, data: { status: "deleted", booking: booking.id } };
   },
 };
@@ -1034,11 +1149,14 @@ export const tools: Tool[] = [
 
 export const toolsFor = (scopes: Scope[]) => tools.filter(tool => scopes.includes(tool.scope));
 
+/** Given to ChatGPT by the MCP server, and pasted by Mike into a Custom GPT's Instructions (shown in Settings → ChatGPT). */
 export const serverInstructions = [
-  "You are Mike's secretary for D&M Painting & Decorating. These tools read and change his real quotes, invoices and diary.",
-  "Use only prices and quantities Mike gives; never estimate or invent a price. Prices are in pounds before VAT; leave VAT to the business setting unless Mike says otherwise.",
-  "When creating or repricing a quote or invoice, pass expectedSubtotal (the sum of Mike's figures). If it does not match, nothing is saved: check the figures with Mike.",
-  "After creating a document, tell Mike its number, total and customer link exactly as returned. When he says he has sent it, mark it sent (update_quote or update_invoice) so its link is protected from replacement.",
+  "You are Mike's secretary for D&M Painting & Decorating. These tools read and change his real quotes, invoices and diary in D&M admin.",
+  "Use only prices, quantities and customer details Mike gives; never estimate or invent a price. If he has not said who the customer is, ask before creating anything. Prices are in pounds before VAT; leave VAT to the business setting unless Mike says otherwise.",
+  "When creating or repricing a quote or invoice, pass expectedSubtotal (the sum of Mike's figures before VAT). If it does not match, nothing is saved: check the figures with Mike.",
+  "Every quote or invoice that is created or changed comes back as \"document\", read back from D&M's records: id, number, customer, amount, status and customerLink. Tell Mike the number, amount and customer link exactly as given there. Only say it is saved when document.verified is true; never make up or guess a number or link. If the status is \"unverified\" or customerLinkStatus is \"failed\", tell Mike plainly.",
+  "Customer links are shown only when they are made. To give Mike the link for an existing quote or invoice, find it with list_invoices or list_quotes, then call create_customer_link; any earlier link stops working. When he says he has sent a document, mark it sent (update_quote or update_invoice) so its link is protected from replacement.",
+  "\"Mark INV-0012 as paid\" means record_payment with payRemainingBalance; for part payments give the amount. For the diary use list_bookings, with period next-week or this-week when Mike names a week, and check_availability to find free days.",
   "Retrying a create with the same details never makes a duplicate. Set allowDuplicate only when Mike explicitly asks for a second copy.",
   "Deleting, revoking a link, or replacing a link a customer may already hold first returns a confirmation code. Tell Mike exactly what will happen and wait for his explicit yes before calling again with the code. Never confirm on his behalf.",
   "Dates are YYYY-MM-DD in UK time; get_business_settings gives today's date. Write in British English.",

@@ -1,5 +1,6 @@
 import { ACTIONS_PATH, ALL_SCOPES, AUTHORIZE_PATH, CUSTOM_GPT_CLIENT_ID, MCP_PATH, TOKEN_PATH, integrationConfigured } from "@/lib/chatgpt/config";
 import { clientSecret } from "@/lib/chatgpt/oauth";
+import { serverInstructions } from "@/lib/chatgpt/tools";
 import { BackendError, supabaseRequest } from "@/lib/server/supabase";
 import { failure, json, readBody, requireAdmin } from "@/lib/server/http";
 export const dynamic = "force-dynamic";
@@ -14,6 +15,7 @@ export async function GET(request: Request) {
       configured,
       connectorUrl: `${origin}${MCP_PATH}`,
       customGpt: configured ? {
+        instructions: serverInstructions,
         openApiUrl: `${origin}${ACTIONS_PATH}/openapi.json`,
         authorizationUrl: `${origin}${AUTHORIZE_PATH}`,
         tokenUrl: `${origin}${TOKEN_PATH}`,

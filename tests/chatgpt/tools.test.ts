@@ -227,3 +227,242 @@ test("a connection without a permission is told so and changes nothing", async c
   assert.equal(supabase.state.revision, 0);
   assert.deepEqual(ALL_SCOPES, ["dm:read", "dm:write", "dm:delete"]);
 });
+
+/* Mike's own requests, read back from Supabase -------------------------------- */
+
+type Saved = { kind: string; id: string; number: string; customer: string; amount: string; status: string; customerLink: string | null; customerLinkStatus: string; verified: boolean; balance?: string };
+const savedDocument = (result: { data: Record<string, unknown> }) => result.data.document as Saved;
+/** What an anonymous customer's page receives for a link, through the stand-in's dm_get_shared_document. */
+async function openLink(link: string) {
+  const response = await fetch("https://fdctgtncawolrapwwevm.supabase.co/rest/v1/rpc/dm_get_shared_document", { method: "POST", body: JSON.stringify({ p_token: link.slice(-64) }) });
+  return await response.json() as { document: { kind: string; number: string; customer: { name: string; email: string }; works: { unitPrice: number; quantity: number }[]; payments?: { amount: number }[]; internalNotes?: string } } | null;
+}
+
+test("\"Create an invoice for John Smith for £850 decorating labour\" saves INV-0011 and returns its checked customer link", async context => {
+  const { supabase, call } = setup(context);
+  const before = structuredClone(supabase.state.data);
+  const result = await call("create_invoice", {
+    customer: { name: "John Smith" }, title: "Decorating labour",
+    works: [{ description: "Decorating labour", quantity: 1, unitPrice: 850 }], expectedSubtotal: 850,
+  });
+  const saved = savedDocument(result);
+  const stored = supabase.state.data.invoices.find(record => record.id === saved.id)!;
+  assert.equal(result.data.status, "created");
+  assert.deepEqual({ ...saved, id: undefined, customerLink: undefined }, {
+    kind: "invoice", id: undefined, number: "INV-0011", customer: "John Smith", amount: "£850.00", vat: "no VAT", paid: "£0.00", balance: "£850.00",
+    dueDate: "2026-10-30", status: "draft", customerLink: undefined, customerLinkStatus: "new", adminUrl: `${ORIGIN}/admin/invoices/${saved.id}`, verified: true,
+  });
+  assert.equal(stored.number, saved.number, "The number is the one Supabase stored");
+  assert.equal(invoiceTotals(stored).totalPence, 85000);
+  assert.deepEqual(stored.bank, before.settings.bank, "D&M's bank details and terms are used");
+  assert.equal(stored.paymentNote, before.settings.defaultPaymentNote);
+  assert.equal(saved.customerLink, result.data.customerLink);
+  assert.equal(supabase.state.opened.at(-1), saved.customerLink!.slice(-64), "The link was opened before it was given");
+  const shown = await openLink(saved.customerLink!);
+  assert.equal(shown?.document.number, "INV-0011");
+  assert.equal(shown?.document.customer.name, "John Smith");
+  assert.equal(shown?.document.customer.email, "", "The customer page shows no contact details");
+  assert.equal(shown?.document.internalNotes, undefined, "Private notes never reach the customer");
+  untouched(before, supabase.state.data);
+});
+
+test("a three-day painting quote (£1,500 labour, £200 materials) is created, revised and keeps its number and link", async context => {
+  const { supabase, call, ctx } = setup(context);
+  const job = {
+    customer: { name: "Sarah Jones", address: "4 Mill Lane, Lymm, WA13 9SD" }, title: "Three-day painting job",
+    works: [{ description: "Painting labour", quantity: 3, unit: "day", unitPrice: 500 }], materials: [{ description: "Paint and materials", quantity: 1, unitPrice: 200 }],
+    expectedSubtotal: 1700,
+  };
+  const created = savedDocument(await call("create_quote", job));
+  assert.equal(created.number, "Q-0041");
+  assert.equal(created.amount, "£1,700.00");
+  assert.equal(created.verified, true);
+
+  const revised = await call("update_quote", { quote: "Q-0041", materials: [{ description: "Paint and materials", quantity: 1, unitPrice: 260 }], expectedSubtotal: 1760 }, { ...ctx(), now: new Date(NOW.getTime() + 60_000) });
+  const after = savedDocument(revised);
+  assert.equal(revised.data.status, "updated");
+  assert.equal(after.number, "Q-0041", "A revision keeps the quote's number");
+  assert.equal(after.amount, "£1,760.00");
+  assert.equal(after.customerLinkStatus, "unchanged");
+  assert.equal(after.customerLink, null, "No new link is made; the customer's link shows the revision");
+  assert.equal(supabase.state.data.settings.nextQuoteNumber, 42, "A revision uses no new number");
+  const shown = await openLink(created.customerLink!);
+  assert.equal(shown?.document.number, "Q-0041");
+  assert.equal(normaliseAdminData({ quotes: [shown!.document] }, NOW.toISOString()).quotes.map(documentTotals)[0].totalPence, 176000, "The customer sees the revised total");
+});
+
+test("document numbers are always the ones Supabase issues, never the number ChatGPT's request expected", async context => {
+  const { supabase, call } = setup(context);
+  // Q-0041 was issued once and deleted: the database keeps it reserved and issues the next free number.
+  supabase.state.reserved.add("quote:Q-0041");
+  const quote = savedDocument(await call("create_quote", paulFinn));
+  assert.equal(quote.number, "Q-0042");
+  assert.equal(supabase.state.data.quotes.find(record => record.id === quote.id)!.number, "Q-0042");
+  const settings = await call("get_business_settings", {});
+  assert.equal(settings.data.nextQuoteNumber, "Q-0043");
+  const test = savedDocument(await call("create_invoice", { customer: { name: "Test Customer" }, title: "Test", works: [{ description: "Test", quantity: 1, unitPrice: 1 }], expectedSubtotal: 1, testDocument: true }));
+  assert.match(test.number, /^TEST-/, "A test invoice uses no invoice number");
+  assert.equal(supabase.state.data.settings.nextInvoiceNumber, 11);
+});
+
+test("a save that does not read back as requested is reported as unverified, with no customer link", async context => {
+  const { supabase, ctx } = setup(context);
+  // Straight after the save, another device changes the price before ChatGPT reads it back.
+  supabase.state.afterSave = () => { supabase.state.data.quotes[0].works[0].unitPrice = 999; };
+  const result = await runTool(tool("create_quote"), paulFinn, { client: "c", scopes: ALL_SCOPES, grant: "g", supabase: ctx().token, audience: `${ORIGIN}/api/mcp`, origin: ORIGIN });
+  assert.equal(result.isError, true);
+  assert.equal(result.output.data.status, "unverified");
+  assert.match(result.output.message, /^The quote Q-0041 was saved, but when D&M read it back it did not match what was asked/);
+  const document = result.output.data.document as Saved;
+  assert.equal(document.verified, false);
+  assert.equal(document.customerLink, null);
+  assert.equal(supabase.state.shares.size, 0, "No link is made for a document that did not verify");
+});
+
+test("a customer link is only given once it opens the document; otherwise the saved document is reported without one", async context => {
+  const { supabase, call } = setup(context);
+  supabase.state.breakNextShareOpen = true;
+  const result = await call("create_quote", paulFinn);
+  const saved = savedDocument(result);
+  assert.equal(result.data.status, "created");
+  assert.equal(saved.number, "Q-0041");
+  assert.equal(saved.customerLink, null);
+  assert.equal(saved.customerLinkStatus, "failed");
+  assert.equal(result.data.customerLink, undefined);
+  assert.match(result.data.linkError as string, /Quote Q-0041 is saved; call create_customer_link to try again/);
+  const again = await call("create_customer_link", { document: "Q-0041" });
+  assert.equal(savedDocument(again).customerLinkStatus, "new");
+  assert.equal((await openLink(again.data.customerLink as string))?.document.number, "Q-0041");
+});
+
+test("\"Find John's invoice and give me the customer link\" finds it and replaces the link only after Mike confirms", async context => {
+  const { supabase, call } = setup(context);
+  await call("create_invoice", { customer: { name: "John Smith" }, title: "Decorating labour", works: [{ description: "Decorating labour", quantity: 1, unitPrice: 850 }], expectedSubtotal: 850 });
+  const found = await call("list_invoices", { search: "John" });
+  assert.equal(found.data.total, 1);
+  const number = (found.data.invoices as { number: string }[])[0].number;
+  const link = await call("create_customer_link", { document: number });
+  const saved = savedDocument(link);
+  assert.deepEqual([saved.number, saved.customer, saved.amount, saved.customerLinkStatus, saved.verified], ["INV-0011", "John Smith", "£850.00", "new", true]);
+  assert.equal((await openLink(saved.customerLink!))?.document.number, "INV-0011");
+
+  await call("update_invoice", { invoice: number, status: "sent" });
+  const held = supabase.state.shares.get(saved.id);
+  const ask = await call("create_customer_link", { document: number });
+  assert.equal(ask.data.status, "confirmation_required");
+  assert.equal(supabase.state.shares.get(saved.id), held, "The customer's link keeps working until Mike says yes");
+  const replaced = savedDocument(await call("create_customer_link", { document: number, confirmationCode: ask.data.confirmationCode }));
+  assert.notEqual(replaced.customerLink, saved.customerLink);
+  assert.equal(await openLink(saved.customerLink!), null, "The earlier link stopped working");
+});
+
+test("\"Mark invoice INV-0012 as paid\" records the balance once and the customer's link shows it", async context => {
+  const { supabase, call } = setup(context);
+  const made = savedDocument(await call("create_invoice", { customer: { name: "Ann Other" }, title: "Front door", works: [{ description: "Paint front door", quantity: 1, unitPrice: 150 }], expectedSubtotal: 150 }));
+  await call("create_invoice", { customer: { name: "John Smith" }, title: "Decorating labour", works: [{ description: "Decorating labour", quantity: 1, unitPrice: 850 }], expectedSubtotal: 850 });
+  const paid = await call("record_payment", { invoice: "INV-0012", payRemainingBalance: true });
+  const saved = savedDocument(paid);
+  assert.equal(paid.data.status, "recorded");
+  assert.deepEqual([saved.number, saved.status, saved.balance, saved.verified], ["INV-0012", "paid", "£0.00", true]);
+  assert.equal((await call("record_payment", { invoice: "INV-0012", payRemainingBalance: true })).data.status, "already_paid");
+  assert.equal(supabase.state.data.invoices.find(record => record.number === "INV-0012")!.payments.length, 1);
+  assert.equal(invoiceTotals(supabase.state.data.invoices.find(record => record.number === "INV-0011")!).paidPence, 0, "Only the named invoice is marked paid");
+  assert.equal(made.number, "INV-0011");
+  // A paid invoice's customer may hold its link, so a new one needs Mike's yes.
+  const ask = await call("create_customer_link", { document: "INV-0012" });
+  assert.equal(ask.data.status, "confirmation_required");
+  const link = await call("create_customer_link", { document: "INV-0012", confirmationCode: ask.data.confirmationCode });
+  const shown = await openLink(link.data.customerLink as string);
+  assert.equal(shown?.document.payments?.[0].amount, 850, "The customer sees the payment");
+});
+
+test("\"Show my diary for next week\" lists Monday to Sunday in UK time, and bookings are read back after saving", async context => {
+  const { supabase, call } = setup(context);
+  const week = await call("list_bookings", { period: "next-week" });
+  assert.deepEqual([week.data.today, week.data.from, week.data.to], ["2026-10-16", "2026-10-19", "2026-10-25"]);
+  assert.equal((week.data.bookings as { customer: string }[])[0].customer, "Existing Customer");
+  assert.match(week.message, /^1 booking next week \(Mon 19 Oct – Sun 25 Oct\)\.$/);
+  assert.deepEqual([(await call("list_bookings", { period: "this-month" })).data.from, (await call("list_bookings", { period: "next-month" })).data.to], ["2026-10-01", "2026-11-30"]);
+  const free = await call("check_availability", { period: "next-week" });
+  assert.deepEqual((free.data.days as { date: string; status: string }[]).map(entry => entry.status), ["free", "free", "booked", "free", "free", "weekend", "weekend"]);
+
+  const booked = await call("create_booking", { start: "2026-10-22", days: 2, job: "Kitchen", customerName: "Sarah Jones" });
+  assert.equal(booked.data.status, "booked");
+  assert.equal((booked.data.booking as { end: string }).end, "2026-10-23");
+  assert.ok(supabase.state.data.bookings.some(record => record.job === "Kitchen"));
+  supabase.state.afterSave = () => { supabase.state.data.bookings.find(record => record.job === "Kitchen")!.start = "2026-10-29"; };
+  await assert.rejects(call("update_booking", { booking: (booked.data.booking as { id: string }).id, addNote: "Colours agreed" }), /did not match what was asked/);
+});
+
+test("conflicting edits: another device's change survives, and repeated conflicts save nothing", async context => {
+  const { supabase, call } = setup(context);
+  await call("create_quote", paulFinn);
+  const id = supabase.state.data.quotes.find(record => record.number === "Q-0041")!.id;
+  // Mike edits the quote's notes in the admin while ChatGPT changes its price.
+  supabase.state.beforeSave = () => {
+    supabase.state.data.quotes.find(record => record.id === id)!.internalNotes = "Edited on the phone";
+    supabase.state.revision += 1;
+  };
+  const updated = await call("update_quote", { quote: "Q-0041", works: [{ description: "Living room walls", quantity: 2, unit: "day", unitPrice: 220 }], expectedSubtotal: 558 });
+  const quote = supabase.state.data.quotes.find(record => record.id === id)!;
+  assert.equal(savedDocument(updated).amount, "£558.00");
+  assert.equal(quote.internalNotes, "Edited on the phone", "The other device's edit is kept");
+  assert.equal(documentTotals(quote).subtotalPence, 55800);
+
+  // Another device saves first, three times running: ChatGPT gives up and changes nothing.
+  let competing = 0;
+  const race = () => { competing += 1; supabase.state.revision += 1; if (competing < 3) supabase.state.beforeSave = race; };
+  supabase.state.beforeSave = race;
+  const revision = supabase.state.revision;
+  await assert.rejects(call("update_quote", { quote: "Q-0041", status: "sent" }), /changed on another device at the same moment\. Nothing was saved/);
+  assert.equal(supabase.state.data.quotes.find(record => record.id === id)!.status, "draft");
+  assert.equal(supabase.state.revision, revision + 3, "Only the other device's saves happened");
+});
+
+test("a lost answer followed by conflicts is never reported as \"nothing was saved\"", async context => {
+  const { supabase, call } = setup(context);
+  await call("create_quote", paulFinn);
+  supabase.state.loseNextSaveAnswer = true;
+  let competing = 0;
+  supabase.state.beforeSave = () => {
+    // The first save lands but its answer is lost; then another device keeps saving first.
+    const race = () => { competing += 1; supabase.state.revision += 1; if (competing < 2) supabase.state.beforeSave = race; };
+    supabase.state.beforeSave = race;
+  };
+  await assert.rejects(call("update_quote", { quote: "Q-0041", status: "sent" }), /may or may not have been saved\. Check with the matching get_ or list_ tool/);
+  assert.equal(supabase.state.data.quotes.find(record => record.number === "Q-0041")!.status, "sent", "The first attempt did land");
+});
+
+test("incorrect totals are refused for invoices, revisions and payments, and nothing is saved", async context => {
+  const { supabase, call } = setup(context);
+  await call("create_quote", paulFinn);
+  const revision = supabase.state.revision;
+  await assert.rejects(call("create_invoice", { customer: { name: "John Smith" }, title: "Labour", works: [{ description: "Labour", quantity: 1, unitPrice: 850 }], expectedSubtotal: 800 }), /add up to £850\.00 before VAT, but Mike's figures came to £800\.00\. Nothing was saved/);
+  await assert.rejects(call("update_quote", { quote: "Q-0041", works: [{ description: "Walls", quantity: 3, unit: "day", unitPrice: 200 }], expectedSubtotal: 600 }), /add up to £718\.00 before VAT, but Mike's figures came to £600\.00/);
+  await assert.rejects(call("create_invoice", { fromQuote: "Q-0041", works: [{ description: "Deposit", quantity: 1, unitPrice: 200 }], expectedSubtotal: 250 }), /add up to £318\.00 before VAT/);
+  await assert.rejects(call("create_invoice", { customer: { name: "X" }, title: "X", works: [{ description: "X", quantity: 0, unitPrice: 5 }] }), /needs a quantity greater than 0/);
+  assert.equal(supabase.state.revision, revision, "Nothing was saved");
+
+  const vat = savedDocument(await call("create_invoice", { customer: { name: "VAT Customer" }, title: "Labour", works: [{ description: "Labour", quantity: 1, unitPrice: 850 }], vat: { enabled: true, rate: 20 }, expectedSubtotal: 850 }));
+  assert.equal(vat.amount, "£1,020.00", "expectedSubtotal is before VAT; the amount includes it");
+  await assert.rejects(call("record_payment", { invoice: vat.number, amount: 1020.01 }), /£1,020\.01 is more than the £1,020\.00 still owed/);
+});
+
+test("retries, lost answers and racing devices never overwrite or delete existing records", async context => {
+  const { supabase, call } = setup(context);
+  const before = structuredClone(supabase.state.data);
+  supabase.state.loseNextSaveAnswer = true;
+  await call("create_invoice", { customer: { name: "John Smith" }, title: "Decorating labour", works: [{ description: "Decorating labour", quantity: 1, unitPrice: 850 }], expectedSubtotal: 850 });
+  supabase.state.beforeSave = () => { supabase.state.revision += 1; };
+  await call("record_payment", { invoice: "INV-0011", amount: 100 });
+  supabase.state.loseNextSaveAnswer = true;
+  await call("record_payment", { invoice: "INV-0011", amount: 100, label: "Second instalment" });
+  for (let repeat = 0; repeat < 3; repeat += 1) {
+    await call("create_invoice", { customer: { name: "John Smith" }, title: "Decorating labour", works: [{ description: "Decorating labour", quantity: 1, unitPrice: 850 }], expectedSubtotal: 850 });
+  }
+  const invoices = supabase.state.data.invoices.filter(record => record.customer.name === "John Smith");
+  assert.equal(invoices.length, 1);
+  assert.equal(invoices[0].payments.length, 2, "Each payment is recorded exactly once");
+  assert.equal(supabase.state.data.settings.nextInvoiceNumber, 12, "Retries use no extra invoice numbers");
+  untouched(before, supabase.state.data);
+});
