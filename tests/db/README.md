@@ -8,6 +8,8 @@ psql -X --set=ON_ERROR_STOP=1 --file=supabase/production-admin.sql
 psql -X --set=ON_ERROR_STOP=1 --file=tests/db/security.sql
 ```
 
+Both scenarios then apply `supabase/chatgpt-invoices.sql` and run `tests/db/chatgpt-invoices.sql`, which checks the ChatGPT invoice entrypoint: who may call it, preconditions, refused requests, numbering, duplicates, VAT, TEST invoices, customer links and removal (see `docs/chatgpt-invoices.md`).
+
 Use only a new, empty test database. Bootstrap creates test roles, minimal Supabase Auth tables/functions, the four existing application tables, and historical fixture records. It deliberately gives the old tables permissive grants and policies so the checks prove that the upgrade removes those access paths.
 
 The fresh-application scenario starts without any application tables or users and runs:

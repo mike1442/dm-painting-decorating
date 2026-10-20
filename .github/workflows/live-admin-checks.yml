@@ -58,6 +58,10 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Build and verify the complete admin workflow on desktop and mobile
         run: npm run test:e2e:isolated
+      - name: Verify invoices from ChatGPT's Supabase connection and their customer pages
+        env:
+          ISOLATED_SKIP_BUILD: "1"
+        run: npm run test:chatgpt-invoices:isolated
       # Isolated fixtures only; nothing is uploaded.
 
   real-supabase:

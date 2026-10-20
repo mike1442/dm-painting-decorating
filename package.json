@@ -11,7 +11,8 @@
     "test": "node --experimental-strip-types --disable-warning=ExperimentalWarning --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test --test-isolation=none \"tests/**/*.test.ts\"",
     "test:e2e": "playwright test",
     "test:e2e:live": "playwright test --config playwright.live.config.ts",
-    "test:e2e:isolated": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/isolated/run.mjs"
+    "test:e2e:isolated": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/isolated/run.mjs",
+    "test:chatgpt-invoices:isolated": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON tests/isolated/chatgpt-invoices.mjs"
   },
   "engines": {
     "node": "24.x"
