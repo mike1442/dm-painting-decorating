@@ -1,4 +1,6 @@
-# ChatGPT secretary
+# ChatGPT secretary (abandoned)
+
+> **Abandoned. Do not set this up or configure it.** Mike's ChatGPT now creates invoices through its ordinary Supabase connection: see [Invoices from Mike's ChatGPT](chatgpt-invoices.md). This page describes the earlier Custom GPT and Developer-mode (MCP) connection, whose code remains in the repository until it is removed separately.
 
 Mike can run D&M's quotes, invoices and diary by talking to his own ChatGPT, on his iPhone or a computer. For example:
 

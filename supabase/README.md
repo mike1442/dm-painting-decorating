@@ -38,6 +38,15 @@ For a separately authorized, verified existing destination with no application t
 
 The original project's schema and records must remain intact. The source audit reported zero documents, settings, sequences, admin memberships and Auth users, so there were no cloud business records to copy at that time. Recheck counts before applying the destination setup; the source may receive later records. Browser-only records are separate and continue to use the existing reviewed import flow. Each schema application must record the actual migration version returned by Supabase and verify the destination afterwards. Source files alone do not prove remote application or a successful deployment.
 
+## Invoices from Mike's ChatGPT
+
+`chatgpt-invoices.sql` is migration **source** applied after `production-admin.sql` (see [docs/chatgpt-invoices.md](../docs/chatgpt-invoices.md)). ChatGPT's Supabase connection runs SQL as the project's `postgres` role without an Auth session, so the guarded RPCs refuse it. The migration:
+
+- moves the bodies of `private.dm_save_data` and `private.dm_create_share` unchanged into `private.dm_save_owner_data` and `private.dm_create_owner_share`, which take the owner as a parameter. The guarded RPCs keep their administrator check and pass `auth.uid()`.
+- adds `private.dm_chatgpt_create_invoice(jsonb)` and `private.dm_chatgpt_remove_test_invoice(text)` on top of that code, for the `postgres` role only.
+
+Every new function runs as its caller and has execution revoked from `PUBLIC`, `anon`, `authenticated` and `service_role`. The entrypoints also refuse any session that did not log in as the database administrator. Apply it once with `apply_migration` (name `dm_chatgpt_invoices`) after review, record the returned version and rerun the security advisors. It has not been applied to the destination project yet.
+
 ## Applied upgrade evidence
 
 The reviewed upgrade was applied to the original source project as migration `20261017233851_dm_admin_production_persistence_and_sharing`. Post-application queries confirmed anonymous direct-document access and the private owner reader are denied and an invalid share token returns no document. The original project remains intact.

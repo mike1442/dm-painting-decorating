@@ -1,8 +1,7 @@
-import { spawn } from "node:child_process";
 import { get } from "node:https";
 import { randomBytes, randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -11,6 +10,7 @@ import { emptyCustomer, emptyData, newBooking } from "../../lib/admin/factories.
 import { billGatesTestInvoice } from "../../lib/admin/fixtures.ts";
 import { normaliseAdminData } from "../../lib/admin/normalise.ts";
 import { createInvoice, createQuote } from "../../lib/admin/operations.ts";
+import { asAdmin, certificates, fail, MIGRATIONS, run } from "./harness.mjs";
 import { ISOLATED_MARKER, SUPABASE_HOST, startEmulator } from "./supabase-emulator.mjs";
 
 // Runs the unmodified real-workflow Playwright suite (tests/live) against a
@@ -30,35 +30,6 @@ const supabaseUrl = `https://${SUPABASE_HOST}:${port}`;
 const adminEmail = "mike@dmpaintingdecorating.co.uk";
 const adminId = "5eed0000-0000-4000-8000-00000000a11c";
 const runPattern = /^TEST [0-9a-f]{12} /;
-
-function fail(message) {
-  console.error(`ISOLATED: ${message}`);
-  process.exit(1);
-}
-
-function run(command, args, options = {}) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: "inherit", ...options });
-    child.once("error", reject);
-    child.once("close", code => resolve(code ?? 1));
-  });
-}
-
-async function certificates(directory) {
-  const file = name => join(directory, name);
-  const quiet = { stdio: "ignore" };
-  const steps = [
-    ["req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "2", "-subj", "/CN=D&M isolated test CA", "-keyout", file("ca.key"), "-out", file("ca.pem")],
-    ["req", "-newkey", "rsa:2048", "-nodes", "-subj", `/CN=${SUPABASE_HOST}`, "-keyout", file("server.key"), "-out", file("server.csr")],
-    ["x509", "-req", "-in", file("server.csr"), "-CA", file("ca.pem"), "-CAkey", file("ca.key"), "-CAcreateserial", "-days", "2", "-extfile", file("san.cnf"), "-out", file("server.pem")],
-  ];
-  await writeFile(file("san.cnf"), `subjectAltName=DNS:${SUPABASE_HOST}\nextendedKeyUsage=serverAuth\n`);
-  for (const args of steps) if (await run("openssl", args, quiet) !== 0) fail("openssl could not create the disposable TLS certificate.");
-  // Keep any CA bundle the environment already relies on (for example a proxy CA).
-  const existing = process.env.NODE_EXTRA_CA_CERTS ? await readFile(process.env.NODE_EXTRA_CA_CERTS, "utf8").catch(() => "") : "";
-  await writeFile(file("bundle.pem"), `${existing}\n${await readFile(file("ca.pem"), "utf8")}`);
-  return { key: await readFile(file("server.key")), cert: await readFile(file("server.pem")), ca: await readFile(file("ca.pem")), bundle: file("bundle.pem") };
-}
 
 /** Records that stand in for Mike's real business data plus leftovers of an interrupted earlier run. */
 function seedData() {
@@ -87,24 +58,6 @@ function seedData() {
   return normaliseAdminData(data, now);
 }
 
-async function asAdmin(client, work) {
-  const session = randomUUID();
-  await client.query("insert into auth.sessions(id, user_id) values ($1, $2)", [session, adminId]);
-  try {
-    await client.query("begin");
-    await client.query("set local role authenticated");
-    await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: adminId, role: "authenticated", session_id: session })]);
-    const result = await work();
-    await client.query("commit");
-    return result;
-  } catch (error) {
-    await client.query("rollback");
-    throw error;
-  } finally {
-    await client.query("delete from auth.sessions where id = $1", [session]);
-  }
-}
-
 async function prepareDatabase(adminUrl) {
   const url = new URL(adminUrl);
   if (!["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)) fail("ISOLATED_DATABASE_URL must point at a disposable loopback PostgreSQL server.");
@@ -116,7 +69,7 @@ async function prepareDatabase(adminUrl) {
   await server.end();
   url.pathname = `/${name}`;
   const databaseUrl = url.href;
-  for (const file of ["tests/isolated/auth-schema.sql", "supabase/base-schema.sql", "supabase/production-admin.sql"]) {
+  for (const file of ["tests/isolated/auth-schema.sql", ...MIGRATIONS]) {
     const options = { stdio: ["ignore", "ignore", "inherit"], env: { ...process.env, PGOPTIONS: "-c client_min_messages=warning" } };
     if (await run("psql", ["-X", "-q", "--set=ON_ERROR_STOP=1", `--dbname=${databaseUrl}`, `--file=${join(root, file)}`], options) !== 0) fail(`${file} could not be applied.`);
   }
@@ -124,7 +77,7 @@ async function prepareDatabase(adminUrl) {
   await client.connect();
   // The real enrolment trigger adds Mike's membership once his email is confirmed.
   await client.query("insert into auth.users(id, email, email_confirmed_at) values ($1, $2, now())", [adminId, adminEmail]);
-  const seeded = await asAdmin(client, async () => (await client.query("select public.dm_save_data($1::jsonb, 0) as result", [JSON.stringify(seedData())])).rows[0].result);
+  const seeded = await asAdmin(client, adminId, async () => (await client.query("select public.dm_save_data($1::jsonb, 0) as result", [JSON.stringify(seedData())])).rows[0].result);
   await client.end();
   return { databaseUrl, seeded };
 }
@@ -136,7 +89,7 @@ async function verifyDatabase(databaseUrl, seeded) {
   try {
     const sessions = Number((await client.query("select count(*) from auth.sessions")).rows[0].count);
     if (sessions) problems.push(`${sessions} Auth session(s) were not revoked.`);
-    const final = await asAdmin(client, async () => (await client.query("select public.dm_get_data() as result")).rows[0].result);
+    const final = await asAdmin(client, adminId, async () => (await client.query("select public.dm_get_data() as result")).rows[0].result);
     const label = record => record.kind === "booking" ? record.job : record.title;
     const leftovers = ["quotes", "invoices", "bookings"].flatMap(group => final.data[group]).filter(record => runPattern.test(label(record)));
     if (leftovers.length) problems.push(`${leftovers.length} automated TEST record(s) remain.`);

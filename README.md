@@ -29,5 +29,7 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 ## ChatGPT
 
-Mike can run quotes, invoices and the diary by talking to his own ChatGPT, including in ChatGPT's iPhone app, through a private, OAuth-protected connection on the same backend: a Custom GPT with Actions (`/api/chatgpt/openapi.json`, recommended) or the Developer-mode app (`/api/mcp`). Every saved quote or invoice is read back and its customer link opened before ChatGPT reports it. Switch it on by adding `DM_CHATGPT_SECRET` in Vercel. See [docs/chatgpt.md](docs/chatgpt.md) for setup, Mike's connection steps and the security model.
+Mike creates invoices by asking his ordinary ChatGPT, through ChatGPT's existing Supabase connection. ChatGPT runs one SQL statement that calls a narrow database entrypoint (`supabase/chatgpt-invoices.sql`), which uses the admin's own numbering, templates and customer links, checks the link and returns the genuine customer link. See [docs/chatgpt-invoices.md](docs/chatgpt-invoices.md) for setup, the instructions to give ChatGPT and the security model.
+
+The earlier Custom GPT and Developer-mode connection ([docs/chatgpt.md](docs/chatgpt.md)) is abandoned; do not set it up.
 

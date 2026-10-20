@@ -10,7 +10,7 @@ Create a customer link in the editor or preview after saving. Customers can view
 
 Original `dm-admin:v1` browser records remain untouched. Use Settings → Storage on the original browser to review and import missing records. Cloud records with matching IDs are preserved; business settings require an explicit import choice. Export a backup before importing. Recovery copies protect failed edits but do not replace permanent database storage.
 
-Mike can also create and manage all of this by talking to ChatGPT; see [ChatGPT secretary](chatgpt.md).
+Mike can also create invoices by asking his ordinary ChatGPT, through its Supabase connection; see [Invoices from Mike's ChatGPT](chatgpt-invoices.md).
 
 See [Production operations](production-admin.md) for required configuration, Mike's account setup, migration, verification and release gates.
 
