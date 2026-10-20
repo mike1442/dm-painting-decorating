@@ -29,5 +29,5 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 ## ChatGPT
 
-Mike can run quotes, invoices and the diary by talking to his own ChatGPT, through a private, OAuth-protected connection at `/api/mcp` on the same backend. Switch it on by adding `DM_CHATGPT_SECRET` in Vercel. See [docs/chatgpt.md](docs/chatgpt.md) for setup, Mike's connection steps and the security model.
+Mike can run quotes, invoices and the diary by talking to his own ChatGPT, including in ChatGPT's iPhone app, through a private, OAuth-protected connection on the same backend: a Custom GPT with Actions (`/api/chatgpt/openapi.json`, recommended) or the Developer-mode app (`/api/mcp`). Every saved quote or invoice is read back and its customer link opened before ChatGPT reports it. Switch it on by adding `DM_CHATGPT_SECRET` in Vercel. See [docs/chatgpt.md](docs/chatgpt.md) for setup, Mike's connection steps and the security model.
 

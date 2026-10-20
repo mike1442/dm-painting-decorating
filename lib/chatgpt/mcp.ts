@@ -46,7 +46,7 @@ export async function runTool(tool: Tool, args: unknown, grant: Grant): Promise<
   } catch (error) {
     if (error instanceof AuthRequired) throw error;
     console.warn(`ChatGPT tool ${tool.name} ${error instanceof ToolError ? "refused the request" : "failed"} after ${Date.now() - started} ms`);
-    if (error instanceof ToolError) return { output: { message: error.message, data: { status: "error" } }, isError: true };
+    if (error instanceof ToolError) return { output: { message: error.message, data: { status: "error", ...error.data } }, isError: true };
     const busy = error instanceof BackendError && error.status === 429;
     return {
       output: {
@@ -152,7 +152,44 @@ export function handleMcpOther(): Response {
 
 /* Custom GPT actions ------------------------------------------------------- */
 
-/** OpenAPI description of the same tools, for a Custom GPT's Actions. */
+/** The answer to every action: what to tell Mike, and the saved quote or invoice as read back from D&M's records. */
+const actionResult = {
+  type: "object",
+  properties: {
+    message: { type: "string", description: "What happened, in words to relay to Mike." },
+    status: { type: "string", description: "The outcome, e.g. created, already_created, updated, recorded, booked, confirmation_required, possible_duplicate, clash, unverified or error." },
+    document: {
+      type: "object",
+      description: "The quote or invoice created or changed, read back from D&M's records. Give Mike its number, amount and customerLink exactly as here.",
+      properties: {
+        kind: { type: "string", description: "quote or invoice" },
+        id: { type: "string" },
+        number: { type: "string", description: "The number D&M issued, e.g. Q-0041 or INV-0012." },
+        customer: { type: "string" },
+        amount: { type: "string", description: "Total including any VAT, e.g. £850.00." },
+        status: { type: "string" },
+        customerLink: { type: "string", description: "A new customer link, checked to open this document; null when no new link was made." },
+        customerLinkStatus: { type: "string", description: "new, unchanged (any earlier link keeps working), not-requested, failed or revoked." },
+        verified: { type: "boolean", description: "True only when the saved record was read back and matches the request." },
+      },
+      additionalProperties: true,
+    },
+    confirmationCode: { type: "string", description: "Only after Mike explicitly says yes, send it back to the same action." },
+  },
+  additionalProperties: true,
+};
+
+/** JSON Schema as the GPT builder accepts it: no empty required lists. */
+function forActions(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(forActions);
+  if (!schema || typeof schema !== "object") return schema;
+  return Object.fromEntries(Object.entries(schema)
+    .filter(([key, value]) => !(key === "required" && Array.isArray(value) && !value.length))
+    .map(([key, value]) => [key, forActions(value)]));
+}
+const takesInput = (tool: Tool) => Object.keys((tool.inputSchema as { properties?: object }).properties ?? {}).length > 0;
+
+/** OpenAPI description of the same tools, for a Custom GPT's Actions (the route that works in ChatGPT's iPhone app). */
 export function openApiDocument(request: Request): Response {
   try { integrationKeys(); } catch { return integrationDisabledResponse(); }
   const origin = originOf(request);
@@ -164,20 +201,25 @@ export function openApiDocument(request: Request): Response {
       description: tool.summary,
       "x-openai-isConsequential": tool.kind !== "read",
       security: [{ dmOAuth: [tool.scope] }],
-      requestBody: { required: true, content: { "application/json": { schema: tool.inputSchema } } },
+      // An action without inputs is sent without a body.
+      ...(takesInput(tool) ? { requestBody: { required: true, content: { "application/json": { schema: forActions(tool.inputSchema) } } } } : {}),
       responses: {
-        "200": { description: "The result, with a message to relay to Mike.", content: { "application/json": { schema: { type: "object", properties: { message: { type: "string" } }, additionalProperties: true } } } },
-        "401": { description: "Reconnect D&M." },
+        "200": { description: "The result, with a message to relay to Mike.", content: { "application/json": { schema: { $ref: "#/components/schemas/ActionResult" } } } },
+        "401": { description: "Sign in to D&M again." },
       },
     },
   }]));
   return jsonResponse({
     openapi: "3.1.0",
-    info: { title: "D&M Painting & Decorating admin", version: "1.0.0", description: serverInstructions.slice(0, 300) },
+    info: {
+      title: "D&M Painting & Decorating admin",
+      version: "1.1.0",
+      description: "Mike's private D&M admin: create and update real quotes and invoices, record payments, return checked customer links and keep the diary. Never invent prices, numbers or links.",
+    },
     servers: [{ url: origin }],
     paths,
     components: {
-      schemas: {},
+      schemas: { ActionResult: actionResult },
       securitySchemes: {
         dmOAuth: { type: "oauth2", flows: { authorizationCode: { authorizationUrl: `${origin}${AUTHORIZE_PATH}`, tokenUrl: `${origin}${TOKEN_PATH}`, scopes } } },
       },

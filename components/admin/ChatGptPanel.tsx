@@ -8,15 +8,17 @@ import "./ShareControls.css";
 type Connection = {
   configured: boolean;
   connectorUrl: string;
-  customGpt: { openApiUrl: string; authorizationUrl: string; tokenUrl: string; clientId: string; clientSecret: string; scope: string } | null;
+  customGpt: { instructions: string; openApiUrl: string; authorizationUrl: string; tokenUrl: string; clientId: string; clientSecret: string; scope: string } | null;
 };
 
-function CopyField({ label, value, secret = false }: { label: string; value: string; secret?: boolean }) {
+function CopyField({ label, value, secret = false, multiline = false }: { label: string; value: string; secret?: boolean; multiline?: boolean }) {
   const [copied, setCopied] = useState(false);
   return (
     <div className="adm-share-link">
       <Field label={label}>
-        {control => <input {...control} className="adm-input adm-code" type={secret ? "password" : "text"} value={value} readOnly onFocus={event => event.target.select()} />}
+        {control => multiline
+          ? <textarea {...control} className="adm-input adm-textarea adm-code" rows={6} value={value} readOnly onFocus={event => event.target.select()} />
+          : <input {...control} className="adm-input adm-code" type={secret ? "password" : "text"} value={value} readOnly onFocus={event => event.target.select()} />}
       </Field>
       <button type="button" className="adm-btn adm-btn-ghost" onClick={async () => {
         try { await navigator.clipboard.writeText(value); setCopied(true); } catch { setCopied(false); }
@@ -68,25 +70,34 @@ export function ChatGptPanel() {
       )}
       {connection?.configured && (
         <>
-          <ol className="adm-small">
-            <li>In ChatGPT, open Settings → Apps (or Apps &amp; Connectors) → Advanced settings, and turn on Developer mode.</li>
-            <li>Choose Create app. Name it “D&amp;M Admin”, paste the address below, choose OAuth, tick that you trust it, and press Create.</li>
-            <li>A D&amp;M page opens: enter your admin password and press Allow.</li>
-            <li>In a chat, add D&amp;M Admin from the + menu and ask, for example: “Create a quote for Paul Finn, 6 Falkstone Close, Gorse Covert, WA3 6SU. Living room, 25 m² walls, two days, £400 labour, £118 materials.”</li>
-          </ol>
-          <CopyField label="ChatGPT app address" value={connection.connectorUrl} />
           {connection.customGpt && (
-            <details className="adm-small">
-              <summary>Using a Custom GPT instead</summary>
-              <p className="adm-muted">In the GPT editor, choose Create new action → Import from URL, then Authentication → OAuth with these values (token exchange: default POST request).</p>
+            <>
+              <p className="adm-small"><strong>Works on iPhone: your own D&amp;M GPT.</strong> Set it up once on a computer at chatgpt.com; then use it in the ChatGPT app.</p>
+              <ol className="adm-small">
+                <li>In ChatGPT, open GPTs → Create → Configure. Name it “D&amp;M Admin”, keep it “Only me”, and paste the Instructions below.</li>
+                <li>Under Actions, choose Create new action → Import from URL, and paste the address below.</li>
+                <li>Choose Authentication → OAuth and paste the Client ID, Client secret, Authorization URL, Token URL and Scope below. Token exchange method: Default (POST request). Save, then Create.</li>
+                <li>On your iPhone, open the ChatGPT app → GPTs → D&amp;M Admin. The first time, tap Sign in, enter your D&amp;M admin password and tap Allow.</li>
+              </ol>
+              <CopyField label="Instructions" value={connection.customGpt.instructions} multiline />
               <CopyField label="Import from URL" value={connection.customGpt.openApiUrl} />
               <CopyField label="Client ID" value={connection.customGpt.clientId} />
               <CopyField label="Client secret" value={connection.customGpt.clientSecret} secret />
               <CopyField label="Authorization URL" value={connection.customGpt.authorizationUrl} />
               <CopyField label="Token URL" value={connection.customGpt.tokenUrl} />
               <CopyField label="Scope" value={connection.customGpt.scope} />
-            </details>
+            </>
           )}
+          <details className="adm-small">
+            <summary>On a computer instead: the D&amp;M ChatGPT app (Developer mode)</summary>
+            <ol>
+              <li>In ChatGPT, open Settings → Apps (or Apps &amp; Connectors) → Advanced settings, and turn on Developer mode.</li>
+              <li>Choose Create app. Name it “D&amp;M Admin”, paste the address below, choose OAuth, tick that you trust it, and press Create.</li>
+              <li>A D&amp;M page opens: enter your admin password and press Allow.</li>
+              <li>In a chat, add D&amp;M Admin from the + menu and ask, for example: “Create a quote for Paul Finn, 6 Falkstone Close, Gorse Covert, WA3 6SU. Living room, 25 m² walls, two days, £400 labour, £118 materials.”</li>
+            </ol>
+            <CopyField label="ChatGPT app address" value={connection.connectorUrl} />
+          </details>
           <div className="adm-actions">
             <button type="button" className="adm-btn adm-btn-ghost" disabled={busy} onClick={() => void disconnect()}>
               {busy ? "Disconnecting…" : "Disconnect ChatGPT"}

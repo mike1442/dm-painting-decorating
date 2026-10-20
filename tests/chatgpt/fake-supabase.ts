@@ -7,8 +7,10 @@ import type { AdminData } from "../../lib/admin/types.ts";
 // It follows the real contracts the integration depends on: GoTrue password,
 // refresh-token rotation (a spent refresh token is refused at once here; hosted
 // Supabase first allows a 10-second reuse interval), user and logout
-// endpoints; and the guarded RPCs, including the revision lock, canonical
-// numbering with reserved numbers, and hashed, rotating customer links.
+// endpoints; the guarded RPCs, including the revision lock, canonical
+// numbering with reserved numbers, and hashed, rotating customer links; and the
+// anonymous dm_get_shared_document a customer link opens, with the same field
+// allowlist as supabase/production-admin.sql.
 
 export const PASSWORD = "correct horse battery staple";
 export const SECRET = "unit-test-secret-0123456789-abcdefghijklmnopqrstuvwxyz";
@@ -47,6 +49,12 @@ export function fakeSupabase(context: TestContext, initial?: AdminData) {
     beforeSave: null as null | (() => void),
     /** Applies the next save but loses its answer, like a dropped connection. */
     loseNextSaveAnswer: false,
+    /** Runs once, just after the next save is stored (e.g. another device editing straight away). */
+    afterSave: null as null | (() => void),
+    /** The next customer link opened finds nothing, as if the share had not been stored. */
+    breakNextShareOpen: false,
+    /** Anonymous customer-link openings, as the customer's page makes them. */
+    opened: [] as string[],
   };
   for (const doc of [...state.data.quotes, ...state.data.invoices]) state.reserved.add(`${doc.kind}:${doc.number}`);
 
@@ -87,6 +95,25 @@ export function fakeSupabase(context: TestContext, initial?: AdminData) {
     state.revision += 1;
   }
 
+  /** What an anonymous customer sees for a link: the public fields only, or null. */
+  function sharedDocument(token: string) {
+    state.opened.push(token);
+    if (state.breakNextShareOpen) { state.breakNextShareOpen = false; return null; }
+    const id = [...state.shares].find(([, value]) => value === token)?.[0];
+    const doc = [...state.data.quotes, ...state.data.invoices].find(record => record.id === id);
+    if (!doc) return null;
+    const keys = ["kind", "number", "status", "title", "issueDate", "scope", "works", "materials", "materialsNote", "vat", "isTest",
+      ...(doc.kind === "quote" ? ["validUntil", "intro", "deposit", "terms"] : ["dueDate", "quoteNumber", "payments", "bank", "paymentNote"])];
+    const document: Record<string, unknown> = Object.fromEntries(Object.entries(structuredClone(doc)).filter(([key]) => keys.includes(key)));
+    document.customer = { name: doc.customer.name, address: doc.customer.address, email: "", phone: "" };
+    if (doc.kind === "invoice") {
+      document.payments = doc.payments.map(payment => ({ date: payment.date, amount: payment.amount, method: payment.method, label: "" }));
+      if (doc.isTest) document.bank = { accountName: "", sortCode: "", accountNumber: "" };
+    }
+    const { businessName, address, phone, email, website, vatNumber, companyNumber } = state.data.settings;
+    return { document, business: { businessName, address, phone, email, website, vatNumber, companyNumber } };
+  }
+
   context.mock.method(globalThis, "fetch", async (input: unknown, init?: RequestInit) => {
     const url = new URL(String(input));
     const path = url.pathname;
@@ -118,6 +145,7 @@ export function fakeSupabase(context: TestContext, initial?: AdminData) {
     }
     const rpc = /^\/rest\/v1\/rpc\/(\w+)$/.exec(path)?.[1];
     if (!rpc) return reply(404, { message: "not found" });
+    if (rpc === "dm_get_shared_document") return reply(200, sharedDocument(String(body?.p_token ?? "")));
     if (!session) return reply(401, { code: "42501", message: "Administrator access required" });
     switch (rpc) {
       case "dm_admin_is_member": return reply(200, true);
@@ -126,6 +154,7 @@ export function fakeSupabase(context: TestContext, initial?: AdminData) {
         if (state.beforeSave) { const run = state.beforeSave; state.beforeSave = null; run(); }
         if (body.p_revision !== state.revision) return reply(409, { code: "40001", message: "Records changed on another device" });
         save(body.p_data);
+        if (state.afterSave) { const run = state.afterSave; state.afterSave = null; run(); }
         if (state.loseNextSaveAnswer) { state.loseNextSaveAnswer = false; throw new TypeError("fetch failed"); }
         return reply(200, { data: structuredClone(state.data), revision: state.revision });
       }
