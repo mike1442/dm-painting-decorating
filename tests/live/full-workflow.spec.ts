@@ -237,7 +237,7 @@ test.describe("authenticated admin workflow", () => {
     const token = new URL(invoiceLink).pathname.split("/").pop()!;
     await unavailable(page, `/d/${token.slice(0, -1)}${token.endsWith("a") ? "b" : "a"}`);
     await privateNavigate(page, `/admin/invoices/${records.invoiceId}`);
-    await expect(page).toHaveURL(/\/login$/);
+    await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(`/admin/invoices/${records.invoiceId}`)}$`));
     await expect(page.getByRole("navigation", { name: "Admin sections" })).toHaveCount(0);
   });
 
@@ -414,7 +414,7 @@ test.describe("session revocation", () => {
       expect((await liveApi(context.request, live.baseURL, "/api/admin/data")).status()).toBe(401);
       expect((await liveApi(replay.request, live.baseURL, "/api/admin/data")).status(), "Replaying the logged-out access and refresh cookies must not regain admin access").toBe(401);
       await privateNavigate(page, "/admin/diary");
-      await expect(page).toHaveURL(/\/login$/);
+      await expect(page).toHaveURL(/\/login\?next=%2Fadmin%2Fdiary$/);
     } catch (error) {
       failure = error;
     }

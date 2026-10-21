@@ -3,10 +3,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { BackupPanel } from "./BackupPanel";
 import { ChatGptPanel } from "./ChatGptPanel";
+import { CopyField } from "./CopyField";
 import { AddressFields, LinesField, NumberField, TextArea, TextField, Toggle } from "./fields";
 import { Card, Loading, PageHead, SaveStatus } from "./ui";
 import { formatDocNumber } from "@/lib/admin/factories";
 import { billGatesTestInvoice } from "@/lib/admin/fixtures";
+import { quickQuoteInstructions } from "@/lib/admin/quick-quote";
 import { clock, commit, flush, useAdminState } from "@/lib/admin/store";
 import type { BusinessSettings } from "@/lib/admin/types";
 
@@ -22,6 +24,19 @@ export function SettingsPanel() {
   return (
     <div className="adm-page adm-editor">
       <PageHead title="Settings" subtitle={<SaveStatus persistence={state.persistence} />} />
+
+      <Card title="Quick quote from ChatGPT">
+        <p className="adm-muted adm-small">
+          Works in the ChatGPT app on any phone. ChatGPT cannot save anything: it replies with a Quick quote link. Tap it, check the customer,
+          job and price, and save the draft. Nothing is sent to the customer until you create a customer link yourself.
+        </p>
+        <ol className="adm-steps">
+          <li>Copy the instructions below.</li>
+          <li>In the ChatGPT app, open Settings → Personalisation → Custom instructions, paste them into “Anything else ChatGPT should know” and save.</li>
+          <li>Ask, for example: “Quote John Smith, 12 Mill Lane, Lymm, WA13 9SD: £1,250 for the lounge and hallway.” If the link asks you to sign in, you come straight back to the quote afterwards.</li>
+        </ol>
+        <CopyField label="Instructions for ChatGPT" value={quickQuoteInstructions(window.location.origin)} multiline />
+      </Card>
 
       <ChatGptPanel />
 

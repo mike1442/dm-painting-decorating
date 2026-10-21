@@ -22,7 +22,7 @@ test("cloud saves serialize edits, adopt assigned numbers, and preserve failures
   const oldWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
   Object.defineProperty(globalThis, "window", { configurable: true, value: {
     sessionStorage: storage(session), localStorage: storage(legacy),
-    location: { assign: (url: string) => { redirects.push(url); } },
+    location: { pathname: "/admin/quick-quote", search: "?for=John%20Smith&total=1250", assign: (url: string) => { redirects.push(url); } },
   } });
   context.after(() => {
     if (oldWindow) Object.defineProperty(globalThis, "window", oldWindow);
@@ -122,7 +122,7 @@ test("cloud saves serialize edits, adopt assigned numbers, and preserve failures
   mode = "unauthorised";
   commit(data => ({ ...data, quotes: data.quotes.map(quote => ({ ...quote, title: "Expired-session edit" })) }));
   assert.equal(await flush(), false);
-  assert.deepEqual(redirects, ["/login"]);
+  assert.deepEqual(redirects, ["/login?next=%2Fadmin%2Fquick-quote%3Ffor%3DJohn%2520Smith%26total%3D1250"], "sign-in returns to the page, keeping a Quick quote link's details");
   assert.match(session.get("dm-admin:pending:v1") ?? "", /Expired-session edit/);
 });
 

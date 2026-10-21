@@ -17,7 +17,8 @@ test("admin login remains usable on the selected viewport", async ({ page }) => 
 for (const path of ["/admin", "/admin/quotes", "/admin/invoices", "/admin/diary", "/admin/settings", "/admin/invoices/private-record/preview"]) {
   test(`anonymous browser cannot enter ${path}`, async ({ page }) => {
     await page.goto(path);
-    await expect(page).toHaveURL(/\/login$/);
+    // Sent to sign in, remembering only the admin page to return to.
+    await expect(page).toHaveURL(new RegExp(`/login\\?next=${encodeURIComponent(path)}$`));
     await expect(page.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
     await expect(page.locator(".adm-tabs")).toHaveCount(0);
   });

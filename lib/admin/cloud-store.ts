@@ -3,6 +3,7 @@ import type { ParsedBackup } from "./backup.ts";
 import { todayIso } from "./dates.ts";
 import { emptyData } from "./factories.ts";
 import { normaliseAdminData } from "./normalise.ts";
+import { loginPath } from "./return-path.ts";
 import type { Clock } from "./operations.ts";
 import type { AdminData } from "./types.ts";
 
@@ -86,7 +87,8 @@ function sessionExpired() {
     rememberPending();
     emit();
   }
-  window.location.assign("/login");
+  // Back to this page after signing in; the unsaved edits stay in the recovery copy.
+  window.location.assign(loginPath(window.location.pathname, window.location.search));
 }
 
 async function cloudResponse(response: Response): Promise<{ data: AdminData; revision: number }> {

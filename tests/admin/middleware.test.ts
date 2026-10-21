@@ -54,11 +54,11 @@ test("real middleware preserves sessions on upstream rate limits and fails close
     return mode === "member-rate-limit" ? Response.json({}, { status: 429 }) : Response.json(true);
   });
 
-  function request(path: string) {
+  function request(path: string, method = "GET") {
     const url = new URL(path, "https://admin.example.test");
     const values = new Map([["dm-access", "access-fixture"], ["dm-refresh", "refresh-fixture"]]);
     return {
-      url: url.href, nextUrl: url, headers: new Headers(),
+      url: url.href, nextUrl: url, method, headers: new Headers(),
       cookies: {
         get: (name: string) => values.has(name) ? { value: values.get(name)! } : undefined,
         set: (name: string, value: string) => { values.set(name, value); },
@@ -97,6 +97,10 @@ test("real middleware preserves sessions on upstream rate limits and fails close
     assert.deepEqual(response.headers.getSetCookie(), ["dm-access=; Max-Age=0", "dm-refresh=; Max-Age=0"], "Invalid sessions must still be cleared");
     assert.equal(response.headers.get("x-middleware-next"), null);
   }
+  // A Quick quote link opened with an expired session keeps its details through sign-in.
+  const link = await middleware(request("/admin/quick-quote?for=John%20Smith&total=1250"));
+  assert.equal(link.headers.get("location"), "https://admin.example.test/login?next=%2Fadmin%2Fquick-quote%3Ffor%3DJohn%2520Smith%26total%3D1250");
+  assert.equal((await middleware(request("/admin/quotes", "POST"))).headers.get("location"), "https://admin.example.test/login", "Only page views are remembered");
 
   mode = "expired";
   for (const path of ["/api/admin/data", "/admin/quotes"]) {

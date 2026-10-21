@@ -109,6 +109,13 @@ export function QuoteList() {
               <small>Start with your standard intro and terms.</small>
             </span>
           </button>
+          <Link className="adm-choice" href="/admin/quick-quote">
+            <Icon name="pound" size={24} />
+            <span>
+              <strong>Quick quote</strong>
+              <small>Customer, job and price on one screen. ChatGPT&apos;s quote links open here too.</small>
+            </span>
+          </Link>
           <button type="button" className="adm-choice" onClick={() => setSheet("chatgpt")}>
             <Icon name="spark" size={24} />
             <span>

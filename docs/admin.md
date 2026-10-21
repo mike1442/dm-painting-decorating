@@ -10,13 +10,16 @@ Create a customer link in the editor or preview after saving. Customers can view
 
 Original `dm-admin:v1` browser records remain untouched. Use Settings → Storage on the original browser to review and import missing records. Cloud records with matching IDs are preserved; business settings require an explicit import choice. Export a backup before importing. Recovery copies protect failed edits but do not replace permanent database storage.
 
-Mike can also create invoices by asking his ordinary ChatGPT, through its Supabase connection; see [Invoices from Mike's ChatGPT](chatgpt-invoices.md).
+Mike can also create invoices by asking his ordinary ChatGPT, through its Supabase connection; see [Invoices from Mike's ChatGPT](chatgpt-invoices.md). For quotations, ChatGPT replies with a **Quick quote** link that Mike checks and saves as a draft; see [Quotations from Mike's ChatGPT](chatgpt-quotes.md).
+
+An admin page opened without a valid session (for example a Quick quote link on the phone) sends Mike to sign in and then back to that page.
 
 See [Production operations](production-admin.md) for required configuration, Mike's account setup, migration, verification and release gates.
 
 ## Source and checks
 
 - `lib/admin/operations.ts`: document, payment and booking operations.
+- `lib/admin/quick-quote.ts`: reading Quick quote links, customer matching and ChatGPT's instructions.
 - `lib/admin/money.ts`: integer-pence arithmetic.
 - `lib/admin/cloud-store.ts`: cloud persistence, revision conflicts and safe imports.
 - `lib/server/`: Supabase REST transport, session authorization and API error handling.
