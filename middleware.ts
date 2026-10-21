@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { ACCESS_COOKIE, REFRESH_COOKIE, accessCookieMaxAge, adminSecurityHeaders } from "@/lib/admin/auth";
+import { loginPath } from "@/lib/admin/return-path";
 import { BackendError, refreshSession, verifyAdmin, type AuthSession } from "@/lib/server/supabase";
 const RETRY_SECONDS = 3;
 // Shown instead of a bare JSON error when a page cannot be authorised because
@@ -42,7 +43,9 @@ export async function middleware(request: NextRequest) {
       ? NextResponse.json({ error: "Authentication is temporarily unavailable. Please try again." }, { status: 503, headers: { "Retry-After": String(RETRY_SECONDS) } })
       : new NextResponse(RECONNECTING_PAGE, { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Retry-After": String(RETRY_SECONDS) } });
   } else {
-    response = api ? NextResponse.json({ error: "Please sign in." }, { status: 401 }) : NextResponse.redirect(new URL("/login", request.url));
+    // A page opened with an expired session (e.g. a Quick quote link from ChatGPT) is reopened after sign-in.
+    const login = request.method === "GET" ? loginPath(request.nextUrl.pathname, request.nextUrl.search) : "/login";
+    response = api ? NextResponse.json({ error: "Please sign in." }, { status: 401 }) : NextResponse.redirect(new URL(login, request.url));
     response.cookies.delete(ACCESS_COOKIE); response.cookies.delete(REFRESH_COOKIE);
   }
   for (const [key, value] of Object.entries(adminSecurityHeaders)) response.headers.set(key, value);

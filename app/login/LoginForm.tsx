@@ -2,6 +2,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { BrandLogo } from "@/components/documents/BrandLogo";
 import { ADMIN_EMAIL } from "@/lib/admin/auth";
+import { adminReturnPath } from "@/lib/admin/return-path";
 export function LoginForm() {
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -17,7 +18,7 @@ export function LoginForm() {
       const response = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: form.get("email"), password: form.get("password") }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Sign-in failed.");
-      window.location.assign("/admin/quotes");
+      window.location.assign(adminReturnPath(new URLSearchParams(window.location.search).get("next"), window.location.origin));
     } catch (e) { setError(e instanceof Error ? e.message : "Could not connect. Please try again."); setBusy(false); }
   }
   return <main className="adm" style={{ minHeight: "100dvh", display: "grid", placeItems: "center", padding: 20 }}>
