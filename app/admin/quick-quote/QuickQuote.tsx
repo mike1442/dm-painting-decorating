@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useState } from "react";
 import { createQuote } from "@/lib/admin/operations";
 import { clock, commit, useAdminState } from "@/lib/admin/store";
@@ -38,7 +39,7 @@ export function QuickQuote({ initialName, initialAmount, initialDescription }: {
   };
 
   return <main className="mx-auto max-w-xl space-y-5 p-5">
-    <a className="text-sm underline" href="/admin/quotes">← Back to quotations</a>
+    <Link className="text-sm underline" href="/admin/quotes">← Back to quotations</Link>
     <h1 className="text-2xl font-bold">Quick quotation</h1>
     <p>Check the details below, then create a draft. Nothing is sent to the customer.</p>
     {!state ? <p>Loading admin…</p> : <>
