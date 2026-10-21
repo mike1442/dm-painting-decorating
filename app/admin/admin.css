@@ -355,3 +355,9 @@
   .adm-main,.adm-preview,.adm-paper{padding:0!important;margin:0!important;max-width:none!important}
   .adm-paper .dmdoc{box-shadow:none;max-width:none;margin:0}
 }
+
+/* The A4 preview must not expand the admin viewport on a phone. */
+@media screen and (max-width:620px){
+  .adm-preview,.adm-paper{min-width:0;max-width:100%}
+  .adm-paper .dmdoc{width:100%;min-width:0;max-width:100%;overflow-wrap:anywhere}
+}
