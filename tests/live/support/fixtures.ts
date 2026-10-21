@@ -89,6 +89,14 @@ export const documentTotal = (page: Page, name: string | RegExp) =>
 export async function signIn(page: Page, password: string) {
   const response = await privateNavigate(page, "/login");
   expect(response?.status(), "The login page must be reachable before real workflow verification").toBe(200);
+  await submitSignIn(page, password);
+  await expect(page).toHaveURL(/\/admin\/quotes$/);
+  await adminReady(page);
+  await layoutFits(page);
+}
+
+/** Completes the sign-in form already on screen; the caller checks where it leads. */
+export async function submitSignIn(page: Page, password: string) {
   await expect(page.getByRole("heading", { name: "Admin sign in" })).toBeVisible();
   await field(page, "Email").fill(ADMIN_EMAIL);
   // Do not use locator.fill(password): its failure call log can print the value.
@@ -101,9 +109,6 @@ export async function signIn(page: Page, password: string) {
   const signedIn = page.waitForResponse(response => new URL(response.url()).pathname === "/api/auth/login" && response.request().method() === "POST");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   expect((await signedIn).status(), "Mike's confirmed Supabase Auth account and privately supplied password must authenticate successfully").toBe(200);
-  await expect(page).toHaveURL(/\/admin\/quotes$/);
-  await adminReady(page);
-  await layoutFits(page);
 }
 
 /** Revoke a context's Auth session on the server, then close it; returns fixed failure messages. */

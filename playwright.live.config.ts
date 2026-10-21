@@ -11,7 +11,7 @@ process.env.DM_CHATGPT_SECRET ||= randomBytes(32).toString("base64url");
 
 export default defineConfig({
   testDir: "./tests/live",
-  testMatch: ["chatgpt-connection.spec.ts", "custom-gpt.spec.ts", "full-workflow.spec.ts"],
+  testMatch: ["chatgpt-connection.spec.ts", "custom-gpt.spec.ts", "full-workflow.spec.ts", "quick-quote.spec.ts"],
   fullyParallel: false,
   forbidOnly: true,
   retries: 0,
