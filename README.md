@@ -31,5 +31,7 @@ Logo: `public/dm-logo.svg`, a clean animated vector recreation of the approved c
 
 Mike creates invoices by asking his ordinary ChatGPT, through ChatGPT's existing Supabase connection. ChatGPT runs one SQL statement that calls a narrow database entrypoint (`supabase/chatgpt-invoices.sql`), which uses the admin's own numbering, templates and customer links, checks the link and returns the genuine customer link. See [docs/chatgpt-invoices.md](docs/chatgpt-invoices.md) for setup, the instructions to give ChatGPT and the security model.
 
+Mike prepares quotations from ChatGPT on his phone with **Quick quote**: ChatGPT replies with a link that fills in Admin → Quick quote, and Mike checks it and saves a draft. Nothing is sent to the customer. See [docs/chatgpt-quotes.md](docs/chatgpt-quotes.md).
+
 The earlier Custom GPT and Developer-mode connection ([docs/chatgpt.md](docs/chatgpt.md)) is abandoned; do not set it up.
 
