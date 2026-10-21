@@ -71,6 +71,19 @@ export function ShareControls({ id }: { id: string }) {
     }
   }
 
+  /** The phone's own share sheet (WhatsApp, Messages, email…), where the browser has one. */
+  async function share() {
+    setFailed(false);
+    try {
+      await navigator.share({ url });
+      setMessage("Customer link shared.");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setMessage("The link could not be shared from here. Copy it instead.");
+      setFailed(true);
+    }
+  }
+
   async function copy() {
     setFailed(false);
     try {
@@ -109,6 +122,11 @@ export function ShareControls({ id }: { id: string }) {
           <button type="button" className="adm-btn adm-btn-ghost" onClick={() => void copy()}>
             <Icon name="copy" size={16} /> Copy
           </button>
+          {typeof navigator.share === "function" && (
+            <button type="button" className="adm-btn adm-btn-ghost" onClick={() => void share()}>
+              <Icon name="link" size={16} /> Share…
+            </button>
+          )}
           <a className="adm-btn adm-btn-ghost" href={url} target="_blank" rel="noopener noreferrer">Open</a>
         </div>
       )}
