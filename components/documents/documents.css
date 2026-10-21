@@ -125,3 +125,22 @@
   .dmdoc-body{padding:4mm 17mm 0}
 }
 
+
+/* Keep long invoice references and contact details from setting the paper width.
+   Both admin preview and customer pages use the same document template. */
+@media screen and (max-width:620px){
+  .dmdoc{width:100%;min-width:0;max-width:100%}
+  .dmdoc-frame{width:100%;table-layout:fixed}
+  .dmdoc-body{min-width:0}
+  .dmdoc-head{min-width:0;gap:12px}
+  .dmdoc-head>*{min-width:0}
+  .dmdoc-kind{flex:1 1 0;overflow-wrap:anywhere}
+  .dmdoc-kind h1{font-size:clamp(20px,6vw,28px)}
+  .dmdoc-kind p{overflow-wrap:anywhere;word-break:break-word;letter-spacing:.06em}
+  .dmdoc-logo{max-width:100%;width:min(128px,34vw)}
+  .dmdoc-party,.dmdoc-meta,.dmdoc-meta>*{min-width:0;overflow-wrap:anywhere}
+  .dmdoc-test-notice{overflow-wrap:anywhere;font-size:11px;padding:10px 8px}
+  .dmdoc-items{table-layout:fixed}
+  .dmdoc-items td{overflow-wrap:anywhere}
+  .dmdoc-foot>div{min-width:0;overflow-wrap:anywhere}
+}
