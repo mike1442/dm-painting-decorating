@@ -46,7 +46,7 @@ export function LoginForm() {
         {error && <p role="alert">{error}</p>}
         <button className="adm-btn" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
       </form>}
-      {recovering && <p>A reset link will be sent to {ADMIN_EMAIL}.</p>}
+      {recovering && <><p>A reset link will be sent to {ADMIN_EMAIL}.</p>{error && <p role="alert">{error}</p>}</>}
       <button type="button" className="adm-btn" disabled={busy} onClick={recovering ? recover : () => { setRecovering(true); setError(""); setNotice(""); }}>{recovering ? (busy ? "Sending…" : "Send password reset email") : "Forgot password?"}</button>
       {recovering && <button type="button" disabled={busy} onClick={() => { setRecovering(false); setError(""); }}>Back to sign in</button>}
     </section>
