@@ -1,10 +1,12 @@
 import type { MetadataRoute } from "next";
+import { SITE } from "@/lib/site";
 
+// Only the private admin area is disallowed. Customer document links and the
+// login page stay crawlable so their noindex headers are seen, and the
+// ChatGPT OAuth/MCP endpoints are left untouched.
 export default function robots(): MetadataRoute.Robots {
-  const base = "https://www.dmpaintingdecorating.co.uk";
   return {
-    rules: { userAgent: "*", allow: "/" },
-    sitemap: base + "/sitemap.xml",
-    host: base,
+    rules: { userAgent: "*", allow: "/", disallow: ["/admin", "/api/admin"] },
+    sitemap: SITE.url + "/sitemap.xml",
   };
 }

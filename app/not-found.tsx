@@ -1,0 +1,3 @@
+import Link from "next/link";
+import { SeoLayout, PageIntro } from "@/components/SeoLayout";
+export default function NotFound(){return <SeoLayout><PageIntro kicker="PAGE NOT FOUND" title="This page isn't here" description="The link may be out of date or mistyped. These pages will help you find what you need."/><section className="seo-article seo-article-single"><div><div className="seo-link-list"><Link href="/services">Painting & decorating services ↗</Link><Link href="/areas">Areas we cover ↗</Link><Link href="/guides">Decorating guides ↗</Link><Link href="/contact">Request a quote ↗</Link><Link href="/">Homepage ↗</Link></div></div></section></SeoLayout>}
