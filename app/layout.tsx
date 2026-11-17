@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { site } from "@/lib/site";
+import VercelInsights from "@/components/VercelInsights";
 
 export const metadata: Metadata = {
   title: "D&M Painting & Decorating | The Difference Is in the Preparation",
@@ -9,5 +10,5 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
 };
 export default function RootLayout({ children }: Readonly<{children: React.ReactNode}>) {
-  return <html lang="en-GB"><body>{children}</body></html>;
+  return <html lang="en-GB"><body>{children}<VercelInsights /></body></html>;
 }
