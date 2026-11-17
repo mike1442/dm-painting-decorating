@@ -98,3 +98,39 @@ test("unconfirmed HTTP success preserves enquiry details and photos for retry", 
   await expect(page.getByRole("status")).toContainText("Thanks, we've got your enquiry.");
   expect(attempts).toBe(3);
 });
+
+for (const [project, label] of [["commercial", "Commercial decorating"], ["landlord", "Landlord / letting agent decorating"], ["hall-stairs-landing", "Hall, stairs and landing"]]) {
+  test(`project link preselects ${project} and preserves it through submission`, async ({ page }) => {
+    await page.goto(`/contact?project=${project}`);
+    await expect(page.getByLabel("What would you like decorating?")).toHaveValue(label);
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", "https://www.dmpaintingdecorating.co.uk/contact");
+    await completeEnquiry(page);
+    await page.route("**/api/contact", async route => {
+      const req = route.request();
+      const fd = await new Request(req.url(), { method: "POST", headers: req.headers(), body: new Uint8Array(req.postDataBuffer()!) }).formData();
+      expect(fd.get("projectType")).toBe(label);
+      await route.fulfill({ status: 200, json: { ok: true } });
+    });
+    await page.getByRole("button", { name: "Send my enquiry" }).click();
+    await expect(page.getByRole("status")).toContainText("Thanks, we've got your enquiry.");
+    await page.getByRole("button", { name: "Send another enquiry" }).click();
+    await expect(page.getByLabel("What would you like decorating?")).toHaveValue("");
+  });
+}
+
+test("unknown project query stays unselected", async ({ page }) => {
+  await page.goto("/contact?project=unrecognised-value");
+  await expect(page.getByLabel("What would you like decorating?")).toHaveValue("");
+});
+
+test("existing hubs expose the confirmed coverage and audience paths without overflow", async ({ page }) => {
+  await page.goto("/areas");
+  await expect(page.locator(".coverage-list")).toContainText("Wilmslow");
+  await expect(page.locator(".coverage-list")).toContainText("Golborne");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.goto("/services");
+  await expect(page.getByRole("heading", { name: "Commercial decorating", exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Landlord & letting agent decorating", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Enquire about commercial decorating" })).toHaveAttribute("href", "/contact?project=commercial");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
