@@ -13,6 +13,8 @@ npm run dev
 
 Use the existing Vercel project and Supabase project. Configure the public API URL/key from `.env.example`; no service-role key is needed. See [production operations](docs/production-admin.md) for the account, migration and release checks.
 
+Vercel Web Analytics and Speed Insights are included (`components/VercelInsights.tsx`). Enable both once under the Vercel project's **Analytics** and **Speed Insights** tabs. Customer links (`/d/…`), admin, sign-in and OAuth pages are never reported.
+
 ## Before launch
 
 - Replace placeholder stock photographs with genuine D&M project photography.
