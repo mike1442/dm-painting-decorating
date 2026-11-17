@@ -3,19 +3,20 @@ type ServiceDetail = { description: string; sections: Section[]; questions: Sect
 
 export const serviceDetails: Record<string, ServiceDetail> = {
   "interior-painting": {
-    description: "Interior painters and decorators for Wigan, Leigh and Warrington. Walls, ceilings and room refreshes with careful preparation. Request a D&M quote.",
+    description: "Interior painters and decorators for homes across our working area. Walls, ceilings and room refreshes with careful preparation. Request a D&M quote.",
     sections: [
       ["Walls, ceilings and lived-in rooms", "A room refresh can cover walls and ceilings alone or include the doors, frames and skirting. Agreeing those surfaces at the start avoids surprises. Let us know whether the room will be occupied during the work and what furniture can be moved before arrival."],
       ["Preparation matched to the surface", "Sound existing paint needs a different approach from bare plaster, flaking coatings or a wall stripped of wallpaper. We assess filling, sanding, cleaning and primer requirements before choosing a coating system. Painting over loose material will not make it sound; stains and moisture need their cause considered before decoration."],
       ["What affects an interior painting quote?", "Room dimensions, ceiling height, access, surface condition, colour changes and the number of surfaces all affect the scope. Send photographs of the whole room and close-ups of damaged areas. Wallpaper removal or more extensive repairs should be agreed rather than assumed to be included in a repaint."],
     ],
     questions: [
+      ["Can you decorate a hall, stairs and landing?", "Yes. Tell us whether ceilings, walls, stair joinery, doors and skirting are included. Stairwell height, access upstairs, loose paint and any wallpaper removal affect protection, preparation and the programme. Photographs looking up and down the stairs are a useful starting point."],
       ["Can you decorate just one room?", "Yes, enquiries can be for one room, several rooms or a whole home. Tell us the location and scope so we can discuss availability and the next step."],
       ["Does the room need to be empty?", "Clear access to the surfaces helps us work and protect your belongings. We will discuss furniture, floor protection and anything that needs moving before the work starts."],
     ], guides: ["why-preparation-matters", "planning-a-whole-house-redecoration"],
   },
   "woodwork-painting": {
-    description: "Door, skirting and woodwork painting in Wigan, Leigh and Warrington. D&M prepares existing joinery and agrees a suitable finish for your home.",
+    description: "Door, skirting and woodwork painting across Cheshire, Manchester and our surrounding service areas. D&M prepares existing joinery and agrees a suitable finish for your home.",
     sections: [
       ["Doors, frames and skirting", "Woodwork sets the edges of a room. We can discuss doors, architraves, skirting boards and other painted interior joinery alongside the walls or as a separate scope. Tell us how many items are involved and whether any existing finish is chipped, peeling or uneven."],
       ["A suitable coating system", "Bare timber, MDF and previously painted joinery can need different preparation and primers. Existing gloss also needs its adhesion and condition considered. Filling, careful abrasion, dust removal and compatible coatings are part of specifying the work; simply covering a failed coating is not a lasting repair."],
@@ -27,7 +28,7 @@ export const serviceDetails: Record<string, ServiceDetail> = {
     ], guides: ["painting-woodwork-properly", "why-preparation-matters"],
   },
   "exterior-decorating": {
-    description: "Exterior painting and decorating enquiries in Wigan, Leigh and Warrington. D&M assesses surfaces, access and weather before agreeing the scope.",
+    description: "Exterior painting and decorating enquiries across Cheshire, Manchester and our surrounding service areas. D&M assesses surfaces, access and weather before agreeing the scope.",
     sections: [
       ["Start with condition and access", "Exterior decorating starts with the surface rather than the colour. Send photographs showing the full elevation and any cracked, peeling or damaged areas. Height, access around the building and the condition of existing coatings help determine whether the proposed work is suitable."],
       ["Preparation before a new coating", "Loose coatings, contamination and damaged substrate need assessment before repainting. A new finish cannot solve an underlying leak, persistent damp or rotten timber. Repairs outside the agreed decorating scope may need completing first. The preparation and coating system should suit the material and its exposure."],
@@ -39,7 +40,7 @@ export const serviceDetails: Record<string, ServiceDetail> = {
     ], guides: ["why-preparation-matters"],
   },
   "whole-house-decorating": {
-    description: "Whole-house decorating in Wigan, Leigh and Warrington. Plan rooms, preparation, woodwork and access with D&M for a coordinated home refresh.",
+    description: "Whole-house decorating across Cheshire, Manchester and our surrounding service areas. Plan rooms, preparation, woodwork and access with D&M for a coordinated home refresh.",
     sections: [
       ["Define the work room by room", "A whole-home project needs a clear list of rooms and surfaces. Record whether each room includes ceilings, walls, doors, frames and skirting, along with any wallpaper removal or repairs. This makes quotes easier to compare and helps distinguish a simple refresh from a more extensive preparation programme."],
       ["A practical sequence for your home", "In an occupied property, think about where furniture can move and which rooms must remain usable. We discuss access, protection and room sequencing before the work starts. If other trades are involved, their repairs and dusty work need coordinating with the decorating programme."],

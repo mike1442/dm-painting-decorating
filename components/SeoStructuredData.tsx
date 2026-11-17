@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { coverageAreas } from "@/lib/coverage";
 import { areas } from "@/lib/seo-content";
 import { site } from "@/lib/site";
 
@@ -10,7 +11,7 @@ export function BusinessStructuredData() {
   return <JsonLd data={{ "@context": "https://schema.org", "@graph": [
     { "@type": "HousePainter", "@id": `${site.url}/#business`, name: site.name, url: site.url,
       telephone: site.phone, email: site.email, logo: `${site.url}/dm-logo.svg`,
-      areaServed: areas.map(a => ({ "@type": "Place", name: a.name })) },
+      areaServed: [...new Set([...coverageAreas, ...areas.map(a => a.name)])].map(name => ({ "@type": "Place", name })) },
     { "@type": "WebSite", "@id": `${site.url}/#website`, url: site.url, name: site.name,
       publisher: { "@id": `${site.url}/#business` }, inLanguage: "en-GB" },
   ] }} />;
